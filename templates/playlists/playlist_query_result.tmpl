@@ -1,0 +1,52 @@
+{{define "content"}}
+{{$loggedIn := HasUsername .Context}}
+{{$ctx := .Context}}
+<section id="playlist-result" {{if eq (len .Results) 0}}class="empty" {{end}}>
+  {{if eq (len .Results) 0}}
+  <h1>No results found.</h1>
+  <p>Maybe create a new one?</p>
+  {{else}}
+  <section class="button-bar" hx-target="#playlist-result" hx-swap="innerHTML">
+    <span>Page {{.Page}}</span>
+    {{if .PrevURL}}
+    <button class="base-background" hx-get="{{.PrevURL}}">Previous page</button>
+    {{end}}
+    {{if .NextURL}}
+    <button class="base-background" hx-get="{{.NextURL}}">Next page</button>
+    {{end}}
+    {{if $loggedIn}}
+    <button class="accent-background" hx-post="/playlists/new" hx-prompt="Enter the new playlist name">New
+      playlist</button>
+    {{end}}
+  </section>
+  <section class="playlist-result-wrapper">
+    {{range $playlist := .Results}}
+    <div class="playlist-result-single">
+      <a class="thumbnail" href="/watch/{{$playlist.Id}}">
+        <img src="/assets/local.svg" alt="temporary playlist thumbnail">
+      </a>
+      <div class="info">
+        <a class="title" href="/watch/{{$playlist.Id}}">{{$playlist.Name}}</a>
+        <p>Created at {{FormatTimestampUTC $playlist.CreatedTimestamp}} by {{$playlist.OwnerUsername}}</p>
+        <p>Total length: {{FormatDuration $playlist.TotalLength}} ({{$playlist.ItemCount}} tracks)</p>
+        {{if ne (len $playlist.CurrentPlaying) 0}}
+        <p>Currently playing: Inochi wa Kirawarete iru - Guriri, Kanzaki Iori</p>
+        {{end}}
+        <div class="playlist-button-bar">
+          <a class="button-link base-background" href="/watch/{{$playlist.Id}}">Watch</a>
+          {{if $loggedIn}}
+          {{if eq (GetUsername $ctx) $playlist.OwnerUsername}}
+          <a class="button-link base-background" hx-patch="/playlists/{{$playlist.Id}}/rename"
+            hx-prompt="Enter the new playlist name">Rename</a>
+          <a class="button-link accent-background" hx-delete="/playlists/{{$playlist.Id}}/delete"
+            hx-confirm="Are you sure you want to delete this playlist?">Delete</a>
+          {{end}}
+          {{end}}
+        </div>
+      </div>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+</section>
+{{end}}

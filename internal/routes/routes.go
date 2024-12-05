@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"time"
 
 	"github.com/btmxh/plst4/internal/middlewares"
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,16 @@ func getTemplate(name string, paths ...string) *template.Template {
 			username, _ := c.Get(middlewares.AUTH_OBJECT_KEY)
 			return username.(string)
 		},
+		"FormatTimestampUTC": func(t time.Time) template.HTML {
+			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.In(time.UTC).Format(time.RFC3339) + "\"></span>")
+		},
+		"FormatDuration": func(d time.Duration) string {
+			hours := int(d / time.Hour)
+			minutes := int((d % time.Hour) / time.Minute)
+			seconds := int((d % time.Minute) / time.Second)
+
+			return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+		},
 	}).ParseFiles(paths...))
 }
 
@@ -32,6 +43,8 @@ func CreateMainRouter() http.Handler {
 	router.GET("/", HomeRouter)
 	AuthRouter(router.Group("/auth"))
 	ToastRouter(router.Group("/toast"))
+	WatchRouter(router.Group("/watch"))
+	PlaylistRouter(router.Group("/playlists"))
 	router.Static("/scripts", "./dist/scripts")
 	router.Static("/styles", "./dist/styles")
 	router.Static("/assets", "./dist/assets")
@@ -70,6 +83,10 @@ func Redirect(c *gin.Context, route string) {
 
 func PushURL(c *gin.Context, route string) {
 	c.Header("Hx-Push-Url", route)
+}
+
+func Refresh(c *gin.Context) {
+	c.Header("Hx-Refresh", "true")
 }
 
 func Combine(args ...gin.H) gin.H {

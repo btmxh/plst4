@@ -15,7 +15,7 @@ const (
 	ToastInfo  ToastKind = "info"
 )
 
-func Toast(c *gin.Context, kind ToastKind, title string, description string) {
+func Toast(c *gin.Context, kind ToastKind, title template.HTML, description template.HTML) {
 	c.Header("Hx-Reswap", "afterbegin")
 	c.Header("Hx-Retarget", ".toast-notification-box")
 	SSR(toastTemplate, c, "content", gin.H{

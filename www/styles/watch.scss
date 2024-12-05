@@ -1,0 +1,101 @@
+@use "./vars.scss" as vars;
+
+.playlist-query {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1em;
+
+  input[type="text"] {
+    flex-grow: 1;
+  }
+}
+
+#playlist-result {
+  display: flex;
+  flex-direction: column;
+
+  .button-bar {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 1em;
+
+    span {
+      margin-right: auto;
+      justify-self: flex-start;
+    }
+  }
+
+  .playlist-result-wrapper {
+    margin-left: 4em;
+    margin-right: 4em;
+  }
+
+  &.empty {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .playlist-result-single {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 1em;
+    margin-bottom: 0.5em;
+    margin-top: 0.5em;
+
+    .thumbnail {
+      display: block;
+
+      img {
+        aspect-ratio: 16/9;
+        height: 8em;
+        width: auto;
+        border-radius: .5em;
+        transition: all 0.5s ease;
+
+        &:hover {
+          box-shadow: 0 0 .25em .25em vars.$accent-color;
+        }
+      }
+    }
+
+    .info {
+      flex-grow: 1;
+      min-width: 0;
+
+      .title {
+        display: block;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+        font-size: 1.2em;
+        font-weight: bold;
+        color: white;
+
+        &:hover {
+          text-decoration: underline dotted;
+          white-space: normal;
+        }
+      }
+
+      p {
+        color: #aaa;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+        width: 100%;
+
+        &:hover {
+          white-space: normal;
+        }
+      }
+    }
+  }
+}
+
+.watch-separator {
+  width: 100%;
+  color: vars.$accent-color;
+}

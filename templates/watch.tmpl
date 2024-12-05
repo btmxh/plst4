@@ -1,0 +1,23 @@
+{{define "head"}}
+{{end}}
+
+{{define "body"}}
+{{$loggedIn := HasUsername .Context}}
+<main class="main-content medium {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
+  <h1> Current available playlists </h1>
+  <link rel="stylesheet" href="/styles/watch.css">
+  <form class="playlist-query">
+    <input name="query" type="text" placeholder="Search for playlists...">
+    <label for="playlist-filter">Filter</label>
+    <select name="filter" id="playlist-filter">
+      <option value="all">All</option>
+      <option value="managed" {{if not $loggedIn}}disabled{{end}}>Managed by me</option>
+      <option value="owned" {{if not $loggedIn}}disabled{{end}}>Owned by me</option>
+    </select>
+    <input class="accent-background" type="submit" value="Search" hx-trigger="load,click" hx-get="/playlists/search"
+      hx-target="#playlist-result" hx-include="closest form">
+  </form>
+  <hr class="watch-separator">
+  <section id="playlist-result"></section>
+</main>
+{{end}}
