@@ -1,0 +1,84 @@
+@use "./vars.scss" as vars;
+
+@keyframes toast-load {
+  0% {
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes status {
+  0% {
+    width: 100%;
+  }
+
+  100% {
+    width: 0%;
+  }
+}
+
+.toast-notification-box {
+  width: calc(min(480px, 100vw));
+  max-height: 100vh;
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  top: 0;
+  right: 0;
+  gap: 1em;
+  padding: 1em;
+
+  .info {
+    --toast-color: #{vars.$base-color};
+  }
+
+  .error {
+    --toast-color: #{vars.$accent-color};
+  }
+
+  .info,
+  .error {
+    animation: 5s ease-out 0s 1 toast-load;
+    opacity: 0;
+    background-color: #222;
+    border: 2px var(--toast-color) solid;
+    border-radius: 4px;
+    line-height: 1.5;
+    user-select: none;
+
+    .toast-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5em;
+      padding: 1em;
+
+      h1 {
+        font-size: 1.2em;
+        font-weight: bold;
+      }
+    }
+
+    .status {
+      height: 4px;
+      background-color: var(--toast-color);
+      width: 0px;
+      animation: 5s ease-out 0s 1 status;
+    }
+
+    &:hover {
+      scale: 1.02;
+    }
+  }
+}

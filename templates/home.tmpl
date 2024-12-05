@@ -2,7 +2,14 @@
 {{end}}
 
 {{define "body"}}
-<main class="main-content small {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
-  Hello, World!
+<main class="main-content medium {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
+  <h1> plst4 - a media player server </h1>
+  <p> create an account <a href="/auth/register">here</a> or watch as guest </p>
+  <p> current state: extremely EXPERIMENTAL </p>
+
+  <p> here are some toast notifications to have fun with </p>
+
+  <p> <button hx-get="/toast/info">info</button> </p>
+  <p> <button hx-get="/toast/error">error</button> </p>
 </main>
 {{end}}

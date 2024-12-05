@@ -31,6 +31,7 @@ func CreateMainRouter() http.Handler {
 
 	router.GET("/", HomeRouter)
 	AuthRouter(router.Group("/auth"))
+	ToastRouter(router.Group("/toast"))
 	router.Static("/scripts", "./dist/scripts")
 	router.Static("/styles", "./dist/styles")
 	router.Static("/assets", "./dist/assets")
