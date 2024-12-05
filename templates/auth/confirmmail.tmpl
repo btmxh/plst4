@@ -1,0 +1,14 @@
+{{define "title"}}
+Confirm your email
+{{end}}
+
+{{define "content"}}
+<form class="auth-form">
+  <h1>Confirm your email</h1>
+  <label for="confirm-code" autofocus>Enter the confirmation code mailed to your email</label>
+  <input id="confirm-code" name="code" type="text" placeholder="The confirmation code here" required>
+  <input type="hidden" name="username" value="{{.FormUsername}}">
+  {{template "errorMsg" .}}
+  <input type="submit" value="Continue" hx-post="/auth/confirmmail/submit/">
+</form>
+{{end}}

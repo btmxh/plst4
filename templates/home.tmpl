@@ -1,0 +1,8 @@
+{{define "head"}}
+{{end}}
+
+{{define "body"}}
+<main class="main-content small {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
+  Hello, World!
+</main>
+{{end}}

@@ -1,0 +1,24 @@
+{{define "title"}}
+Log in
+{{end}}
+
+{{define "content"}}
+<form class="auth-form">
+  <h1>Log in</h1>
+  {{if .MessageString}}<p class="info">{{.MessageString}}</p>{{end}}
+  <label for="login-username" autofocus>Username</label>
+  <input id="login-username" name="username" type="text" placeholder="Your username here" autocomplete="username"
+    required>
+  <label for="login-password">Password</label>
+  <input id="login-password" name="password" type="password" placeholder="Your password here"
+    autocomplete="current-password" required>
+
+  <section style="width: 100%;">
+    <a style="float: right;" hx-get="/auth/recover/form/" hx-push-url="/auth/recover/">Forgot password?</a>
+  </section>
+
+  {{template "errorMsg" .}}
+  <input type="submit" value="Continue" hx-post="/auth/login/submit/">
+  <a class="return-btn no-link-effect" hx-get="/auth/register/form/" hx-push-url="/auth/register/">Create a new account</a>
+</form>
+{{end}}

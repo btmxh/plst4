@@ -1,0 +1,27 @@
+{
+  "name": "plst4",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev-ts": "swc www/scripts -d dist/ --strip-leading-paths --watch",
+    "build-ts": "swc www/scripts -d dist/ --strip-leading-paths",
+    "dev-scss": "sass www/styles:dist/styles --watch",
+    "build-scss": "sass www/styles:dist/styles",
+    "dev-go": "air",
+    "build-go": "go build",
+    "dev": "concurrently npm:dev-ts npm:dev-scss npm:dev-go"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@swc/cli": "^0.5.0",
+    "@swc/core": "^1.9.2",
+    "concurrently": "^9.1.0",
+    "sass": "^1.81.0"
+  },
+  "dependencies": {
+    "htmx.org": "2"
+  }
+}

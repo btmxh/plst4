@@ -1,0 +1,21 @@
+{{define "title"}}
+Register
+{{end}}
+
+{{define "content"}}
+<form class="auth-form">
+  <h1>Register</h1>
+  <label for="register-email" autofocus>Email</label>
+  <input id="register-email" name="email" type="text" placeholder="Your email here" autocomplete="email" required>
+  <label for="register-username">Username</label>
+  <input id="register-username" name="username" type="text" placeholder="Your username here" required>
+  <label for="register-password">Password</label>
+  <input id="register-password" name="password" type="password" placeholder="Your password here" required>
+  <label for="register-password-confirm">Confirm password</label>
+  <input id="register-password-confirm" name="password-confirm" type="password" placeholder="Retype your password here"
+    autocomplete="new-password" required>
+  {{template "errorMsg" .}}
+  <input type="submit" value="Continue" hx-post="/auth/register/submit/">
+  <a class="return-btn no-link-effect" hx-get="/auth/login/form/" hx-push-url="/auth/login/">Return to login page</a>
+</form>
+{{end}}

@@ -1,0 +1,19 @@
+{{define "head"}}
+<title>plst4 - {{template "title" .}}</title>
+{{end}}
+
+{{define "body"}}
+<main class="main-content small {{if .Error}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
+  <link rel="stylesheet" href="/styles/auth.css">
+  {{template "content" .}}
+</main>
+{{end}}
+
+{{define "form"}}
+<title>plst4 - {{template "title" .}}</title>
+{{template "body" .}}
+{{end}}
+
+{{define "errorMsg"}}
+{{if .Error}} <p class="error">{{.Error}}</p> {{end}}
+{{end}}

@@ -1,0 +1,196 @@
+@use "./vars.scss" as vars;
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background-color: #222;
+  color: white;
+  font-size: 1.2rem;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  min-height: 100vh;
+
+  .navbar {
+    box-shadow: 0 0.3em 0.2em vars.$accent-color;
+    transition: all 1s;
+
+    &.hidden {
+      margin-top: -4em;
+      box-shadow: none;
+    }
+
+    ul {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5em;
+      padding: 0.25em;
+    }
+
+    .logo {
+      height: 2.5em;
+    }
+
+    .tooltip-wrapper {
+      align-self: end;
+      flex-direction: row-reverse;
+      margin-left: auto;
+
+      .tooltip {
+        color: #aaa;
+        font-size: 0.6em;
+      }
+    }
+  }
+
+  footer {
+    padding: 1rem;
+  }
+}
+
+h1 {
+  font-weight: bold;
+  font-size: 3rem;
+
+  &.centered {
+    display: block;
+    text-align: center;
+  }
+}
+
+a,
+.link-button {
+  color: oklch(69.12% 0.16 250.94);
+  transition: all 0.5s ease;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover:not(.no-link-effect):not(.button-link) {
+    filter: brightness(150%);
+    text-decoration: underline;
+  }
+}
+
+.link-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline;
+  text-align: start;
+  width: auto;
+  height: auto;
+  padding: 0;
+  align-items: normal;
+  font-size: 1em;
+  font-family: inherit;
+}
+
+@keyframes main-content-load {
+  0% {
+    opacity: 0%;
+    transform: translateX(-64px);
+  }
+
+  100% {
+    opacity: 100%;
+  }
+}
+
+.main-content {
+  display: block;
+  margin: auto;
+  margin-top: 2rem;
+  padding: 1rem;
+  width: 100%;
+
+  &.no-margin {
+    margin-top: 0;
+  }
+
+  &:not(.noanim) {
+    animation: 1s ease-out 0s 1 main-content-load;
+  }
+
+  &:not(.bordered) {
+    background-color: #111;
+    border: 2px solid vars.$base-color;
+    border-radius: 4px;
+    filter: drop-shadow(black 0px 16px 10px);
+  }
+
+  &.small {
+    max-width: 600px;
+  }
+}
+
+input:not(input[type="submit"]) {
+  font-size: 1em;
+  background-color: black;
+  accent-color: black;
+  color: white;
+  outline: none;
+  border-radius: .25em;
+  border-style: solid;
+  border-color: vars.$base-color;
+  border-width: 1.5px;
+  padding: 0.3em;
+  margin: 0.1em;
+}
+
+select {
+  font-size: 1em;
+  font-size: 1em;
+  background-color: black;
+  color: white;
+  outline: none;
+  border-radius: .25em;
+  border-style: solid;
+  border-color: vars.$base-color;
+  border-width: 1.5px;
+  padding: 0.3em;
+  margin: 0.1em;
+}
+
+button,
+.button-link,
+input[type="submit"] {
+  border-radius: 0.5em;
+  padding: 0.3em;
+  border: none;
+  margin: 0.1em;
+  font-family: inherit;
+  font-size: 1em;
+  transition: all 0.5s ease;
+  color: black;
+  line-height: 1.5;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    filter: brightness(150%);
+  }
+}
+
+.button-link {
+  user-select: none;
+  display: inline-block;
+  text-align: center;
+}
+
+.accent-background {
+  background-color: vars.$accent-color;
+}
+
+.base-background {
+  background-color: vars.$base-color;
+}
