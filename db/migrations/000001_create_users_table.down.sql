@@ -1,1 +1,3 @@
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS password_reset;
+DROP TABLE IF EXISTS pending_users;
