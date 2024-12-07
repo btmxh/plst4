@@ -20,11 +20,16 @@ func getTemplate(name string, paths ...string) *template.Template {
 			return exists
 		},
 		"GetUsername": func(c *gin.Context) string {
-			username, _ := c.Get(middlewares.AUTH_OBJECT_KEY)
-			return username.(string)
+			username, loggedIn := c.Get(middlewares.AUTH_OBJECT_KEY)
+			if loggedIn {
+				return username.(string)
+			} else {
+				return ""
+			}
 		},
 		"FormatTimestampUTC": func(t time.Time) template.HTML {
-			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.In(time.UTC).Format(time.RFC3339) + "\"></span>")
+			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
+			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.Local().UTC().Format(time.RFC3339) + "\"></span>")
 		},
 		"FormatDuration": func(d time.Duration) string {
 			hours := int(d / time.Hour)

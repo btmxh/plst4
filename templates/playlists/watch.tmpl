@@ -1,0 +1,90 @@
+{{define "head"}}
+<script src="/scripts/watch.js" type="module" defer></script>
+{{end}}
+
+{{define "controller"}}
+<section class="playlist-info">
+  {{if eq (GetUsername .Context) .Owner}}
+  <div class="button-bar">
+    <button class="base-background" hx-patch="/watch/{{.Id}}/controller/rename" hx-prompt="Enter the new playlist name"
+      hx-target="#playlist-controller" hx-swap="innerHTML">Rename</button>
+    <button class="accent-background" hx-delete="/watch/{{.Id}}/controller/delete"
+      hx-confirm="Are you sure you want to delete this playlist?">Delete</button>
+  </div>
+  {{end}}
+  <h2> Current playlist: {{.Name}} </h2>
+  <p> Created by {{.Owner}} at {{FormatTimestampUTC .CreatedTimestamp}} </p>
+</section>
+{{$id := .Id}}
+{{with .Media}}
+<hr>
+<section class="current-media-info">
+  <div class="grid">
+    <label for="media-title">Title</label>
+    <input type="text" id="media-title" value="{{.Title}}">
+    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <label for="media-artist">Artist</label>
+    <input type="text" id="media-artist" value="{{.Artist}}">
+    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <label for="media-original-title">Original title</label>
+    <input type="text" id="media-original-title" value="{{.OriginalTitle}}" readonly>
+    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <label for="media-original-artist">Original artist</label>
+    <input type="text" id="media-original-artist" value="{{.OriginalArtist}}" readonly>
+    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+  </div>
+  <div class="button-bar">
+    <button class="base-background" hx-get="/watch/{{$id}}/controller" hx-target="#playlist-controller"
+      hx-swap="innerHTML">Reset</button>
+    <button class="accent-background" hx-post="/">Submit</button>
+  </div>
+</section>
+<hr>
+<section class="current-media-details">
+  <p>Media duration: {{FormatDuration .Duration}}</p>
+  <p>Media added on 2024-12-04T05:21:20, 31 view(s)</p>
+  <p>Playlist item added on 2024-12-04T05:21:20</p>
+</section>
+{{end}}
+<hr>
+<section>
+  <p><strong>Debug info:</strong></p>
+  <p>Playlist UUID: {{.Id}}</p>
+  <p>Global (playlist) integrity hash: {{.GlobalHash}}</p>
+  <p>Local (media) integrity hash: {{.GlobalHash}}</p>
+  {{with .Media}}
+  <p>Media UUID: {{.Id}}, Type: {{.Type}}</p>
+  <p>Playlist item UUID: {{.ItemId}} (prev {{.PrevId}}, next {{.NextId}})</p>
+  <p>Media URL: <a href="{{.URL}}" target="_blank">{{.URL}}</a></p>
+  {{end}}
+</section>
+{{end}}
+
+{{define "body"}}
+{{$loggedIn := HasUsername .Context}}
+<main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}" hx-target="closest main"
+  hx-swap="outerHTML">
+  <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
+  <article>Video placeholder</article>
+  <aside class="playlist-details">
+    <nav class="tab-bar">
+      <ul>
+        <li>
+          <input type="radio" id="tab-queue" class="tab-radio" name="playlist-details-tab" checked>
+          <label for="tab-queue">queue</label>
+        </li>
+        <li>
+          <input type="radio" id="tab-controller" class="tab-radio" name="playlist-details-tab">
+          <label for="tab-controller">controller</label>
+        </li>
+      </ul>
+    </nav>
+    <section id="playlist-queue" class="tab-content">
+      queue tab
+    </section>
+    <section id="playlist-controller" class="tab-content">
+      {{template "controller" .}}
+    </section>
+  </aside>
+</main>
+{{end}}

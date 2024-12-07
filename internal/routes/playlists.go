@@ -1,10 +1,11 @@
 package routes
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"html/template"
 	"log/slog"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -33,18 +34,35 @@ const (
 )
 
 var watchTemplate = getTemplate("watch", "templates/watch.tmpl")
+var playlistWatchTmpl = getTemplate("watch", "templates/playlists/watch.tmpl")
+var playlistWatchInvalidTmpl = getTemplate("watch", "templates/playlists/watch_invalid.tmpl")
 var playlistQueryResult = getTemplate("playlist_query_result", "templates/playlists/playlist_query_result.tmpl")
 
 func WatchRouter(g *gin.RouterGroup) {
 	g.GET("/", SSRRoute(watchTemplate, "layout", gin.H{}))
-	g.GET("/:id/")
+	g.GET("/:id/", playlistWatchPageRouter("layout"))
+	g.GET("/:id/controller", playlistWatchPageRouter("controller"))
+	g.PATCH("/:id/controller/rename", func(c *gin.Context) {
+		renamePlaylist(c)
+		playlistWatchPageRouter("controller")(c)
+	})
+	g.DELETE("/:id/controller/delete", func(c *gin.Context) {
+		deletePlaylist(c)
+		Redirect(c, "/watch")
+	})
 }
 
 func PlaylistRouter(g *gin.RouterGroup) {
 	g.GET("/search", search)
 	g.POST("/new", newPlaylist)
-	g.PATCH("/:id/rename", renamePlaylist)
-	g.DELETE("/:id/delete", deletePlaylist)
+	g.PATCH("/:id/rename", func(c *gin.Context) {
+		renamePlaylist(c)
+		Refresh(c)
+	})
+	g.DELETE("/:id/delete", func(c *gin.Context) {
+		deletePlaylist(c)
+		Refresh(c)
+	})
 }
 
 func search(c *gin.Context) {
@@ -179,10 +197,10 @@ func newPlaylist(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusSeeOther, "/watch/"+id.String())
+	Redirect(c, "/watch/"+id.String())
 }
 
-func renamePlaylist(c *gin.Context) {
+func renamePlaylist(c *gin.Context) bool {
 	username, loggedIn := middlewares.GetAuthUsername(c)
 	name := c.Request.Header.Get("Hx-Prompt")
 	id := c.Param("id")
@@ -196,42 +214,42 @@ func renamePlaylist(c *gin.Context) {
 
 	if !loggedIn {
 		fail("You must be logged in to do this", nil)
-		return
+		return false
 	}
 
 	if len(name) == 0 {
 		fail("Playlist name must not be empty", nil)
-		return
+		return false
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 	defer tx.Rollback()
 
 	row, err := tx.Exec("UPDATE playlists SET name = $1 WHERE id = $2 AND owner_username = $3", name, id, username)
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
 	if affected, err := row.RowsAffected(); affected == 0 || err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
 	err = tx.Commit()
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
-	Refresh(c)
+	return true
 }
 
-func deletePlaylist(c *gin.Context) {
+func deletePlaylist(c *gin.Context) bool {
 	username, loggedIn := middlewares.GetAuthUsername(c)
 	id := c.Param("id")
 	fail := func(msg template.HTML, err error) {
@@ -244,32 +262,89 @@ func deletePlaylist(c *gin.Context) {
 
 	if !loggedIn {
 		fail("You must be logged in to do this", nil)
-		return
+		return false
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 	defer tx.Rollback()
 
 	row, err := tx.Exec("DELETE FROM playlists WHERE id = $1 AND owner_username = $2", id, username)
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
 	if affected, err := row.RowsAffected(); affected == 0 || err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
 	err = tx.Commit()
 	if err != nil {
 		fail("", err)
-		return
+		return false
 	}
 
-	Refresh(c)
+	return true
+}
+
+func playlistWatchPageRouter(block string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+
+		fail := func(msg template.HTML, err error) {
+			slog.Warn("Playlist fetch error", "msg", msg, "err", err)
+			SSR(playlistWatchInvalidTmpl, c, "layout", defaultErrorMsg(msg))
+		}
+
+		tx, err := db.DB.Begin()
+		if err != nil {
+			fail("", err)
+			return
+		}
+		defer tx.Rollback()
+
+		var name string
+		var owner string
+		var createdTimestamp time.Time
+		var stateSecret string
+		err = tx.QueryRow("SELECT name, owner_username, created_timestamp, state_secret FROM playlists WHERE id = $1", id).Scan(&name, &owner, &createdTimestamp, &stateSecret)
+		if err != nil {
+			fail("", err)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			fail("", err)
+			return
+		}
+
+		hash := sha256.Sum256([]byte(stateSecret))
+		globalHash := base64.StdEncoding.EncodeToString(hash[:])
+
+		SSR(playlistWatchTmpl, c, block, gin.H{
+			"Id":               id,
+			"Name":             name,
+			"Owner":            owner,
+			"CreatedTimestamp": createdTimestamp,
+			"GlobalHash":       globalHash,
+			"Media": gin.H{
+				"Id":             "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
+				"ItemId":         "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
+				"PrevId":         "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
+				"NextId":         "none",
+				"Type":           "yt",
+				"URL":            "https://youtu.be/FrcR9qvjwmo",
+				"Title":          "Hello, World!",
+				"Artist":         "Kizuna Ai",
+				"OriginalTitle":  "hello world",
+				"OriginalArtist": "Kizuna Ai",
+				"Duration":       time.Duration(100) * time.Second,
+			},
+		})
+	}
 }

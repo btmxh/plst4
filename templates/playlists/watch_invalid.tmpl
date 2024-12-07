@@ -1,0 +1,13 @@
+{{define "head"}}
+{{end}}
+
+{{define "body"}}
+{{$loggedIn := HasUsername .Context}}
+<main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}" hx-target="closest main"
+  hx-swap="outerHTML">
+  <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
+  <article>
+    <h1>Invalid playlist</h1>
+  </article>
+</main>
+{{end}}

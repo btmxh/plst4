@@ -5,6 +5,10 @@
   {{if eq (len .Results) 0}}
   <h1>No results found.</h1>
   <p>Maybe create a new one?</p>
+  {{if $loggedIn}}
+  <button class="accent-background" hx-post="/playlists/new" hx-prompt="Enter the new playlist name">New
+    playlist</button>
+  {{end}}
   {{else}}
   <section class="button-bar" hx-target="#playlist-result" hx-swap="innerHTML">
     <span>Page {{.Page}}</span>

@@ -1,0 +1,80 @@
+@use "./vars.scss" as vars;
+
+.playlist-details {
+  border: 1px vars.$accent-color solid;
+  margin: 0.5em;
+
+  .tab-bar ul {
+    display: flex;
+    background-color: #2f2f2f;
+    border: 1px vars.$accent-color solid;
+
+    label {
+      display: block;
+      padding: 0.25em 0.5em;
+      cursor: pointer;
+
+      &:hover {
+        background-color: vars.$accent-color-light;
+      }
+    }
+
+    .tab-radio {
+      display: none;
+      float: left;
+
+      &:checked {
+
+        &~label {
+
+          &,
+          &:hover {
+            background-color: vars.$accent-color;
+            cursor: default;
+          }
+        }
+      }
+    }
+  }
+
+
+  &:has(#tab-queue:checked) #playlist-queue,
+  &:has(#tab-controller:checked) #playlist-controller {
+    display: block;
+  }
+
+  .tab-content {
+    display: none;
+    padding: 0.5em;
+
+    h2 {
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+
+    .button-bar {
+      float: right;
+    }
+
+    .current-media-info {
+      .grid {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        column-gap: 1em;
+        align-items: center;
+        margin-bottom: 0.5em;
+      }
+
+      .button-bar {
+        float: none;
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-end;
+      }
+    }
+
+    .current-media-details {
+      text-align: right;
+    }
+  }
+}
