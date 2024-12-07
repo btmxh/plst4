@@ -66,10 +66,7 @@ func PlaylistRouter(g *gin.RouterGroup) {
 }
 
 func search(c *gin.Context) {
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	if !loggedIn {
-		username = ""
-	}
+	username, _ := middlewares.GetAuthUsername(c)
 
 	query := strings.ToLower(c.Query("query"))
 	filter := c.Query("filter")
