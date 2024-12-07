@@ -1,0 +1,1 @@
+ALTER TABLE playlists ALTER COLUMN item_count SET NOT NULL;
