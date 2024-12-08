@@ -630,10 +630,10 @@ func playlistWatchQueueNextPage(c *gin.Context) {
 		"Id":         id,
 		"GlobalHash": hashSecret(stateSecret),
 		"Items":      items,
-		"ThisPage":   pivotArgs(items[0].Id, items[0].Index, stateSecret),
+		"ThisPage":   pivotArgs(items[len(items)-1].Id, items[len(items)-1].Index, stateSecret),
 		"CurrentIdx": currentIndex,
 	}
-	if items[0].Prev.Valid {
+	if items[len(items)-1].Prev.Valid {
 		args["PrevPage"] = pivotArgs(items[len(items)-1].Prev.UUID, items[len(items)-1].Index-1, stateSecret)
 	}
 	if nextId.Valid {
@@ -702,7 +702,7 @@ func playlistWatchQueuePrevPage(c *gin.Context) {
 		"Id":         id,
 		"GlobalHash": hashSecret(stateSecret),
 		"Items":      items,
-		"ThisPage":   pivotArgs(items[0].Id, items[0].Index, stateSecret),
+		"ThisPage":   pivotArgs(items[len(items)-1].Id, items[len(items)-1].Index, stateSecret),
 		"CurrentIdx": currentIndex,
 	}
 	if items[0].Next.Valid {
