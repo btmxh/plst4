@@ -121,7 +121,7 @@ a,
   &.no-margin {
     margin-top: 0;
   }
-  
+
   &.no-padding {
     padding: 0;
   }
@@ -174,9 +174,9 @@ select {
   margin: 0.1em;
 }
 
-button,
+button:not(.link-button),
 .button-link,
-input[type="submit"] {
+input[type="submit"]:not(.link-button) {
   border-radius: 0.5em;
   padding: 0.3em;
   border: none;

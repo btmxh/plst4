@@ -131,9 +131,7 @@ func check(t *testing.T, p *TestPlaylist, expected []string, current string) {
 
 func pick(t *testing.T, p *TestPlaylist, index int, name string) {
 	if index < 0 {
-		p.Current = NilId()
-		p.CurrentIndex = -1
-		return
+		p.SetCurrent(NilId(), -1)
 	}
 
 	items := collect(t, p)
@@ -141,8 +139,7 @@ func pick(t *testing.T, p *TestPlaylist, index int, name string) {
 		t.Fatalf("Mismatch pick() name at index %d: %s != %s", index, name, items[index].name)
 	}
 
-	p.CurrentIndex = index
-	p.Current = Nilable(items[index].id)
+	p.SetCurrent(Nilable(items[index].id), index)
 }
 
 func remove(t *testing.T, p *TestPlaylist, index int, name string) {
@@ -166,14 +163,13 @@ func (p *TestPlaylist) Query() (PlaylistInfo, error) {
 	info.Last.Id = p.Last
 	if info.Current.Index >= 0 {
 		info.Current.Id = p.Current
-		info.HasCurrent = true
 	}
 	return info, nil
 }
 
 func (p *TestPlaylist) QueryItem(id NonNilId) (PlaylistItemInfo, error) {
 	item := p.Items[id]
-	return PlaylistItemInfo{Id: Nilable(id), Prev: item.prev, Next: item.next}, nil
+	return PlaylistItemInfo{Id: id, Prev: item.prev, Next: item.next}, nil
 }
 
 func (p *TestPlaylist) SetFirst(id Id) error {
@@ -437,4 +433,3 @@ func TestAddRemoveAddQueueNext(t *testing.T) {
 	add(t, list, "baz", QueueNext) // Falls back to AddToEnd
 	check(t, list, []string{"bar", "baz"}, "")
 }
-

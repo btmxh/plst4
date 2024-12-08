@@ -2,6 +2,70 @@
 <script src="/scripts/watch.js" type="module" defer></script>
 {{end}}
 
+{{define "queue"}}
+<form hx-target="this" hx-include="#state-hash-input" hx-swap="outerHTML">
+  <input type="hidden" id="state-hash-input" name="state-hash" value="{{.GlobalHash}}">
+  {{$name := "title"}}
+  <input type="ext" name="title" placeholder="Title" value="{{Get .Context $name}}">
+  {{$name := "artist"}}
+  <input type="text" name="artist" placeholder="Artist" value="{{Get .Context $name}}">
+  <select name="add-position">
+    <option value="add-to-start">Add to start</option>
+    <option value="add-to-end">Add to end</option>
+    <option value="queue-next">Queue next</option>
+  </select>
+  <input type="submit" value="add" hx-post="/watch/{{.Id}}/queue/add">
+  <hr>
+  <div class="button-bar">
+    <input class="base-background" type="submit" value="refresh" hx-get="/watch/{{.Id}}/queue/thispage"
+      hx-vals="{{.ThisPage}}">
+    <input class="accent-background" type="submit" value="delete" hx-delete="/watch/{{.Id}}/queue/delete">
+
+    <input class="base-background" type="submit" value="<<" hx-get="/watch/{{.Id}}/queue/firstpage">
+    {{if .PrevPage}}
+    <input class="base-background" type="submit" value="<" hx-get="/watch/{{.Id}}/queue/prevpage"
+      hx-vals="{{.PrevPage}}">
+    {{end}}
+    {{if .NextPage}}
+    <input class="base-background" type="submit" value=">" hx-get="/watch/{{.Id}}/queue/nextpage"
+      hx-vals="{{.NextPage}}">
+    {{end}}
+    <input class="base-background" type="submit" value=">>" hx-get="/watch/{{.Id}}/queue/lastpage">
+  </div>
+
+  <section class="playlist-items">
+    {{if eq (len .Items) 0}}
+    <h1>Playlist is empty</h1>
+    {{else}}
+    {{$thisPage := .ThisPage}}
+    {{$playlistId := .Id}}
+    {{$currentIdx := .CurrentIdx}}
+    {{range $item := .Items}}
+    <div class="playlist-entry">
+      <span class="playlist-entry-length">00:00:30</span>
+      <input type="checkbox" id="playlist-item-{{$item.Id}}">
+      {{$current := eq $item.Index $currentIdx}}
+      <label for="playlist-item-{{$item.Id}}" class="{{if $current}}current-item{{end}}">
+        {{if $current}}
+        <span class="current-item-gt">&gt;</span>
+        {{end}}
+        {{HumanIndex $item.Index}}. {{$item.Title}} - {{$item.Artist}}
+      </label>
+      <input name="playlist-item-hash-{{$item.Id}}" type="hidden" value="{{.PositionalHash}}">
+      <span class="playlist-utilities">
+        <a href="{{$item.URL}}" target="_blank">link</a>
+        <button type="button" class="link-button" onclick="copyPrevLink(event)">copy</button>
+        <input class="link-button" type="submit" hx-patch="/watch/{{$playlistId}}/queue/goto/{{$item.Id}}" value="goto"
+          hx-vals='js:{"index": {{$item.Index}}, ...{{$thisPage}}}'
+          hx-params='playlist-item-hash-{{$item.Id}},index,state-hash,pivot,pivot-index,pivot-pos-hash'>
+      </span>
+    </div>
+    {{end}}
+    {{end}}
+  </section>
+</form>
+{{end}}
+
 {{define "controller"}}
 <section class="playlist-info">
   {{if eq (GetUsername .Context) .Owner}}
@@ -46,6 +110,7 @@
   <p>Playlist item added on 2024-12-04T05:21:20</p>
 </section>
 {{end}}
+
 <hr>
 <section>
   <p><strong>Debug info:</strong></p>
@@ -79,11 +144,11 @@
         </li>
       </ul>
     </nav>
-    <section id="playlist-queue" class="tab-content">
-      queue tab
+    <section id="playlist-queue" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/queue/firstpage"
+      hx-swap="innerHTML" hx-target="this">
     </section>
-    <section id="playlist-controller" class="tab-content">
-      {{template "controller" .}}
+    <section id="playlist-controller" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/controller"
+      hx-swap="innerHTML" hx-target="this">
     </section>
   </aside>
 </main>

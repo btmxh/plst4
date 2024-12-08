@@ -8,6 +8,7 @@
     display: flex;
     background-color: #2f2f2f;
     border: 1px vars.$accent-color solid;
+    user-select: none;
 
     label {
       display: block;
@@ -43,15 +44,7 @@
     display: block;
   }
 
-  .tab-content {
-    display: none;
-    padding: 0.5em;
-
-    h2 {
-      font-size: 1.5em;
-      font-weight: bold;
-    }
-
+  #playlist-controller {
     .button-bar {
       float: right;
     }
@@ -75,6 +68,42 @@
 
     .current-media-details {
       text-align: right;
+    }
+  }
+
+  #playlist-queue {
+    .playlist-entry {
+      display: block;
+
+      .playlist-entry-length {
+        float: right;
+      }
+
+      .playlist-utilities {
+        display: none;
+      }
+
+      .current-item {
+        color: vars.$base-color;
+      }
+
+      .current-item-gt {
+        color: vars.$accent-color;
+      }
+
+      &:hover .playlist-utilities {
+        display: inline;
+      }
+    }
+  }
+
+  .tab-content {
+    display: none;
+    padding: 0.5em;
+
+    h2 {
+      font-size: 1.5em;
+      font-weight: bold;
     }
   }
 }

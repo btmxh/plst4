@@ -38,6 +38,16 @@ func getTemplate(name string, paths ...string) *template.Template {
 
 			return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 		},
+		"HumanIndex": func(i int) int {
+			return i + 1
+		},
+		"Get": func(c *gin.Context, name string) string {
+			if(c.Request.Method == "POST") {
+				return c.PostForm(name)
+			} else {
+				return c.Query(name)
+			}
+		},
 	}).ParseFiles(paths...))
 }
 

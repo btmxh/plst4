@@ -1,9 +1,11 @@
 {{define "content"}}
-<div class="{{.Kind}}" onclick="removeMe(event)" toast="">
-  <div class="toast-wrapper">
-    <h1>{{.Title}}</h1>
-    <p>{{.Description}}</p>
+<div hx-swap-oob="afterbegin:.toast-notification-box">
+  <div class="{{.Kind}}" onclick="removeMe(event)" toast="">
+    <div class="toast-wrapper">
+      <h1>{{.Title}}</h1>
+      <p>{{.Description}}</p>
+    </div>
+    <div class="status"></div>
   </div>
-  <div class="status"></div>
 </div>
 {{end}}
