@@ -39,6 +39,7 @@
   right: 0;
   gap: 1em;
   padding: 1em;
+  pointer-events: none;
 
   .info {
     --toast-color: #{vars.$base-color};
@@ -57,6 +58,7 @@
     border-radius: 4px;
     line-height: 1.5;
     user-select: none;
+    pointer-events: auto;
 
     .toast-wrapper {
       display: flex;

@@ -1,8 +1,8 @@
 package db
 
 import (
-	_ "github.com/lib/pq"
 	"database/sql"
+	_ "github.com/lib/pq"
 	"log/slog"
 )
 

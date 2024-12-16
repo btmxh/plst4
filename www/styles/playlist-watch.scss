@@ -1,5 +1,14 @@
 @use "./vars.scss" as vars;
 
+.add-section {
+  display: flex;
+  flex-direction: row;
+
+  .url-bar {
+    flex-grow: 1;
+  }
+}
+
 .playlist-details {
   border: 1px vars.$accent-color solid;
   margin: 0.5em;
@@ -42,6 +51,10 @@
   &:has(#tab-queue:checked) #playlist-queue,
   &:has(#tab-controller:checked) #playlist-controller {
     display: block;
+  }
+
+  .playlist-items .centered {
+    text-align: center;
   }
 
   #playlist-controller {

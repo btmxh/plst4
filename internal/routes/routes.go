@@ -42,7 +42,7 @@ func getTemplate(name string, paths ...string) *template.Template {
 			return i + 1
 		},
 		"Get": func(c *gin.Context, name string) string {
-			if(c.Request.Method == "POST") {
+			if c.Request.Method == "POST" {
 				return c.PostForm(name)
 			} else {
 				return c.Query(name)
@@ -60,6 +60,8 @@ func CreateMainRouter() http.Handler {
 	ToastRouter(router.Group("/toast"))
 	WatchRouter(router.Group("/watch"))
 	PlaylistRouter(router.Group("/playlists"))
+	WebSocketRouter(router.Group("/ws"))
+
 	router.Static("/scripts", "./dist/scripts")
 	router.Static("/styles", "./dist/styles")
 	router.Static("/assets", "./dist/assets")

@@ -15,7 +15,6 @@ const handle = (s) => {
 
 htmx.on("htmx:afterProcessNode", (e) => {
   const elt = e.detail.elt;
-  console.debug(elt);
   if (elt.getAttribute) {
     handle(elt);
     if (elt.querySelectorAll) {

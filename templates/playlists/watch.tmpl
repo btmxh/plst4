@@ -1,63 +1,68 @@
 {{define "head"}}
 <script src="/scripts/watch.js" type="module" defer></script>
+<script src="/scripts/websocket.js" type="module" defer></script>
 {{end}}
 
 {{define "queue"}}
-<form hx-target="this" hx-include="#state-hash-input" hx-swap="outerHTML">
-  <input type="hidden" id="state-hash-input" name="state-hash" value="{{.GlobalHash}}">
-  {{$name := "title"}}
-  <input type="ext" name="title" placeholder="Title" value="{{Get .Context $name}}">
-  {{$name := "artist"}}
-  <input type="text" name="artist" placeholder="Artist" value="{{Get .Context $name}}">
-  <select name="add-position">
-    <option value="add-to-start">Add to start</option>
-    <option value="add-to-end">Add to end</option>
-    <option value="queue-next">Queue next</option>
-  </select>
-  <input type="submit" value="add" hx-post="/watch/{{.Id}}/queue/add">
+<form hx-target="this" hx-include='*' hx-swap="outerHTML">
+  {{$name := "url"}}
+  <section class="add-section">
+    <input class="url-bar" type="text" name="url" placeholder="URL" value="{{Get .Context $name}}">
+    <select name="add-position" class="preserve">
+      <option value="add-to-start" {{if eq (Get .Context "add-position" ) "add-to-start" }}selected{{end}}>Add to start
+      </option>
+      <option value="add-to-end" {{if eq (Get .Context "add-position" ) "add-to-end" }}selected{{end}}>Add to end
+      </option>
+      <option value="queue-next" {{if eq (Get .Context "add-position" ) "queue-next" }}selected{{end}}>Queue next
+      </option>
+    </select>
+    <input class="accent-background" type="submit" value="Add" hx-post="/watch/{{.Id}}/queue/add" hx-swap="none">
+  </section>
   <hr>
   <div class="button-bar">
-    <input class="base-background" type="submit" value="refresh" hx-get="/watch/{{.Id}}/queue/thispage"
-      hx-vals="{{.ThisPage}}">
+    <input class="base-background" type="submit" value="refresh" hx-get="/watch/{{.Id}}/queue?page={{.ThisPage}}"
+      hx-trigger="click, refresh-playlist from:body">
     <input class="accent-background" type="submit" value="delete" hx-delete="/watch/{{.Id}}/queue/delete">
 
-    <input class="base-background" type="submit" value="<<" hx-get="/watch/{{.Id}}/queue/firstpage">
+    <input class="base-background" type="submit" value="<<" hx-get="/watch/{{.Id}}/queue">
     {{if .PrevPage}}
-    <input class="base-background" type="submit" value="<" hx-get="/watch/{{.Id}}/queue/prevpage"
-      hx-vals="{{.PrevPage}}">
+    <input class="base-background" type="submit" value="<" hx-get="/watch/{{.Id}}/queue?page={{.PrevPage}}">
     {{end}}
     {{if .NextPage}}
-    <input class="base-background" type="submit" value=">" hx-get="/watch/{{.Id}}/queue/nextpage"
-      hx-vals="{{.NextPage}}">
+    <input class="base-background" type="submit" value=">" hx-get="/watch/{{.Id}}/queue?page={{.NextPage}}">
     {{end}}
-    <input class="base-background" type="submit" value=">>" hx-get="/watch/{{.Id}}/queue/lastpage">
+    <input class="base-background" type="submit" value=">>" hx-get="/watch/{{.Id}}/queue?page=0">
   </div>
 
   <section class="playlist-items">
     {{if eq (len .Items) 0}}
-    <h1>Playlist is empty</h1>
+    <h1 class="centered">Playlist is empty</h1>
     {{else}}
     {{$thisPage := .ThisPage}}
     {{$playlistId := .Id}}
-    {{$currentIdx := .CurrentIdx}}
+    {{$current := .Current}}
+    {{$context := .Context}}
+    {{$isOwner := eq (GetUsername .Context) .Owner}}
     {{range $item := .Items}}
     <div class="playlist-entry">
-      <span class="playlist-entry-length">00:00:30</span>
-      <input type="checkbox" id="playlist-item-{{$item.Id}}">
-      {{$current := eq $item.Index $currentIdx}}
-      <label for="playlist-item-{{$item.Id}}" class="{{if $current}}current-item{{end}}">
-        {{if $current}}
+      <span class="playlist-entry-length">{{FormatDuration $item.Duration}}</span>
+      {{$selected := eq (Get $context (print "pic-" $item.Id)) "on"}}
+      <input type="checkbox" name="pic-{{$item.Id}}" id="playlist-item-{{$item.Id}}" class="preserve" {{if
+        $selected}}checked{{end}}>
+      {{$isCurrent := eq $item.Id $current}}
+      <label for="playlist-item-{{$item.Id}}" class="{{if $isCurrent}}current-item{{end}}">
+        {{if $isCurrent}}
         <span class="current-item-gt">&gt;</span>
         {{end}}
         {{HumanIndex $item.Index}}. {{$item.Title}} - {{$item.Artist}}
       </label>
-      <input name="playlist-item-hash-{{$item.Id}}" type="hidden" value="{{.PositionalHash}}">
       <span class="playlist-utilities">
         <a href="{{$item.URL}}" target="_blank">link</a>
         <button type="button" class="link-button" onclick="copyPrevLink(event)">copy</button>
+        {{if $isOwner}}
         <input class="link-button" type="submit" hx-patch="/watch/{{$playlistId}}/queue/goto/{{$item.Id}}" value="goto"
-          hx-vals='js:{"index": {{$item.Index}}, ...{{$thisPage}}}'
-          hx-params='playlist-item-hash-{{$item.Id}},index,state-hash,pivot,pivot-index,pivot-pos-hash'>
+          hx-params='pih-{{$item.Id}},index,state-hash,.preserve'>
+        {{end}}
       </span>
     </div>
     {{end}}
@@ -114,12 +119,10 @@
 <hr>
 <section>
   <p><strong>Debug info:</strong></p>
-  <p>Playlist UUID: {{.Id}}</p>
-  <p>Global (playlist) integrity hash: {{.GlobalHash}}</p>
-  <p>Local (media) integrity hash: {{.GlobalHash}}</p>
+  <p>Playlist ID: {{.Id}}</p>
   {{with .Media}}
-  <p>Media UUID: {{.Id}}, Type: {{.Type}}</p>
-  <p>Playlist item UUID: {{.ItemId}} (prev {{.PrevId}}, next {{.NextId}})</p>
+  <p>Media ID: {{.Id}}, type: {{.Type}}</p>
+  <p>Playlist item ID: {{.ItemId}}</p>
   <p>Media URL: <a href="{{.URL}}" target="_blank">{{.URL}}</a></p>
   {{end}}
 </section>
@@ -128,7 +131,8 @@
 {{define "body"}}
 {{$loggedIn := HasUsername .Context}}
 <main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}" hx-target="closest main"
-  hx-swap="outerHTML">
+  hx-swap="outerHTML" data-playlist={{.Id}}>
+  <input id="websocket-id-input" type="hidden" name="websocket-id" value="">
   <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
   <article>Video placeholder</article>
   <aside class="playlist-details">
@@ -144,11 +148,11 @@
         </li>
       </ul>
     </nav>
-    <section id="playlist-queue" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/queue/firstpage"
-      hx-swap="innerHTML" hx-target="this">
+    <section id="playlist-queue" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/queue" hx-swap="innerHTML"
+      hx-target="this">
     </section>
-    <section id="playlist-controller" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/controller"
-      hx-swap="innerHTML" hx-target="this">
+    <section id="playlist-controller" class="tab-content" hx-trigger="load, refresh-playlist from:body"
+      hx-get="/watch/{{.Id}}/controller" hx-swap="innerHTML" hx-target="this">
     </section>
   </aside>
 </main>

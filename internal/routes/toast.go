@@ -2,6 +2,8 @@ package routes
 
 import (
 	"html/template"
+	"log/slog"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +25,22 @@ func Toast(c *gin.Context, kind ToastKind, title template.HTML, description temp
 		"Description": description,
 		"Kind":        kind,
 	})
+}
+
+func WebSocketToast(socketId string, kind ToastKind, title template.HTML, description template.HTML) {
+	var str strings.Builder
+	if err := toastTemplate.ExecuteTemplate(&str, "content", gin.H{
+		"Title":       title,
+		"Description": description,
+		"Kind":        kind,
+	}); err != nil {
+		slog.Warn("error rendering SSR page", "err", err, "name", toastTemplate.Name())
+		return
+	}
+
+	if err := WebSocketSwap(socketId, template.HTML(str.String())); err != nil {
+		slog.Warn("Unable to send WebSocketSwap message to client", "id", socketId, "err", err)
+	}
 }
 
 func ToastRouter(g *gin.RouterGroup) {
