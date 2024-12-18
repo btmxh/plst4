@@ -1,5 +1,18 @@
 @use "./vars.scss" as vars;
 
+#video-player {
+  .video-player-wrapper {
+    display: none;
+
+    &.show {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16/9;
+    }
+  }
+}
+
+
 .add-section {
   display: flex;
   flex-direction: row;

@@ -1,6 +1,15 @@
-export interface SocketMsg {
+export type MediaChangePayload = { type: "none" } | {
+  type: "yt",
+  url: string
+  aspectRatio: string
+}
+
+export type SocketMsg = {
   type: "handshake" | "swap" | "event"
   payload: string
+} | {
+  type: "media-change"
+  payload: MediaChangePayload
 }
 
 export class Plst4Socket {
@@ -54,7 +63,6 @@ export class Plst4Socket {
         setTimeout(() => this.#init(), delay);
       }
     };
-
   }
 
   send(msg: SocketMsg) {

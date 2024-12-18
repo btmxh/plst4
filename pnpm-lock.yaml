@@ -18,6 +18,9 @@ importers:
       '@swc/core':
         specifier: ^1.9.2
         version: 1.9.2
+      '@types/youtube':
+        specifier: ^0.1.0
+        version: 0.1.0
       concurrently:
         specifier: ^9.1.0
         version: 9.1.0
@@ -336,6 +339,9 @@ packages:
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
+
+  '@types/youtube@0.1.0':
+    resolution: {integrity: sha512-Pg33m3X2mFgdmhtvzOlAfUfgOa3341N3/2JCrVY/mXVxb4hagcqqEG6w4vGCfB64StQNWHSj/T8Eotb1Rko/FQ==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -1126,6 +1132,8 @@ snapshots:
   '@types/responselike@1.0.3':
     dependencies:
       '@types/node': 22.9.0
+
+  '@types/youtube@0.1.0': {}
 
   ansi-regex@5.0.1: {}
 

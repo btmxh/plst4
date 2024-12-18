@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -17,7 +16,6 @@ import (
 	"github.com/btmxh/plst4/internal/media"
 	"github.com/btmxh/plst4/internal/middlewares"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PlaylistFilter string
@@ -61,9 +59,36 @@ var playlistWatchTmpl = getTemplate("watch", "templates/playlists/watch.tmpl")
 var playlistWatchInvalidTmpl = getTemplate("watch", "templates/playlists/watch_invalid.tmpl")
 var playlistQueryResult = getTemplate("playlist_query_result", "templates/playlists/playlist_query_result.tmpl")
 
-func triggerRefresh(c *gin.Context) {
+func noswap(c *gin.Context) {
 	c.Header("Hx-Reswap", "none")
+}
+
+func triggerRefresh(c *gin.Context) {
+	noswap(c)
 	c.Header("Hx-Trigger", "refresh-playlist")
+}
+
+func isManager(tx *sql.Tx, username string, playlist int) (bool, error) {
+	var dummy int
+	err := tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1 AND owner_username = $2", playlist, username).Scan(&dummy)
+	if err == nil {
+		return true, nil
+	}
+
+	if err != sql.ErrNoRows {
+		return false, err
+	}
+
+	err = tx.QueryRow("SELECT 1 FROM playlist_manage WHERE playlist = $1 AND username = $2", playlist, username).Scan(&dummy)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+
+	if err == nil {
+		return true, nil
+	}
+
+	return false, err
 }
 
 func getCheckedItems(c *gin.Context) ([]int, error) {
@@ -97,13 +122,24 @@ func getCheckedItems(c *gin.Context) ([]int, error) {
 	return items, nil
 }
 
+func updateTitle(c *gin.Context, title string) {
+	title = template.HTMLEscapeString(title)
+	c.Writer.WriteString("<title>")
+	c.Writer.WriteString(title)
+	c.Writer.WriteString("</title>")
+}
+
 func WatchRouter(g *gin.RouterGroup) {
 	g.GET("/", SSRRoute(watchTemplate, "layout", gin.H{}))
 	g.GET("/:id/", playlistWatch)
 	g.GET("/:id/controller", playlistWatchController)
+	g.POST("/:id/controller/submit", playlistSubmitMetadata)
 	g.PATCH("/:id/controller/rename", func(c *gin.Context) {
-		renamePlaylist(c)
+		renamed := renamePlaylist(c)
 		playlistWatchController(c)
+		if renamed {
+			updateTitle(c, fmt.Sprintf("plst4 - %s", c.Request.Header.Get("Hx-Prompt")))
+		}
 	})
 	g.DELETE("/:id/controller/delete", func(c *gin.Context) {
 		deletePlaylist(c)
@@ -113,6 +149,9 @@ func WatchRouter(g *gin.RouterGroup) {
 	g.POST("/:id/queue/add", playlistAdd)
 	g.DELETE("/:id/queue/delete", playlistDelete)
 	g.PATCH("/:id/queue/goto/:item-id", playlistGoto)
+	g.POST("/:id/queue/nextreq", playlistNextRequest)
+	g.POST("/:id/queue/prev", playlistPrev)
+	g.POST("/:id/queue/next", playlistNext)
 }
 
 func PlaylistRouter(g *gin.RouterGroup) {
@@ -305,7 +344,7 @@ func renamePlaylist(c *gin.Context) bool {
 	}
 
 	if !loggedIn {
-		fail("You must be logged in to do this", nil)
+		fail("You must be logged in to rename this playlist", nil)
 		return false
 	}
 
@@ -402,8 +441,8 @@ func playlistWatch(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	var dummy int
-	err = tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&dummy)
+	var name string
+	err = tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&name)
 	if err != nil {
 		fail("", err)
 		return
@@ -415,25 +454,9 @@ func playlistWatch(c *gin.Context) {
 	}
 
 	SSR(playlistWatchTmpl, c, "layout", gin.H{
-		"Id": id,
+		"Id":    id,
+		"Title": name,
 	})
-}
-
-func nullUUIDToString(u uuid.NullUUID) string {
-	if u.Valid {
-		return ""
-	}
-
-	return u.UUID.String()
-}
-
-func mustJson(args gin.H) string {
-	j, err := json.Marshal(args)
-	if err != nil {
-		panic(err)
-	}
-
-	return string(j)
 }
 
 func playlistWatchQueue(c *gin.Context) {
@@ -445,7 +468,12 @@ func playlistWatchQueue(c *gin.Context) {
 		Toast(c, ToastError, "Unable to fetch playlist queue", msg)
 	}
 
-	id := c.Param("id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
+	}
+
 	limit := 10
 	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil {
@@ -459,6 +487,13 @@ func playlistWatchQueue(c *gin.Context) {
 		return
 	}
 	defer tx.Rollback()
+
+	username, _ := middlewares.GetAuthUsername(c)
+	isManager, err := isManager(tx, username, id)
+	if err != nil {
+		fail("", err)
+		return
+	}
 
 	var current sql.NullInt32
 	var owner string
@@ -483,7 +518,20 @@ func playlistWatchQueue(c *gin.Context) {
 	offset := (page - 1) * 10
 
 	var items []QueuePlaylistItem
-	rows, err := tx.Query("SELECT i.id, m.title, m.artist, m.url, m.duration FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = $1 ORDER BY i.item_order OFFSET $2 LIMIT $3", id, offset, limit)
+	rows, err := tx.Query(`
+    SELECT 
+        i.id, 
+        COALESCE(a.alt_title, m.title),
+        COALESCE(a.alt_artist, m.artist),
+        m.url, 
+        m.duration 
+    FROM playlist_items i 
+    JOIN medias m ON m.id = i.media 
+		LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = i.playlist
+    WHERE i.playlist = $1 
+    ORDER BY i.item_order 
+    OFFSET $2 LIMIT $3`, id, offset, limit)
+
 	for rows.Next() {
 		var item QueuePlaylistItem
 		var duration time.Duration
@@ -505,11 +553,12 @@ func playlistWatchQueue(c *gin.Context) {
 	}
 	slices.Reverse(items)
 	args := gin.H{
-		"Id":       id,
-		"Items":    items,
-		"ThisPage": page,
-		"Current":  currentId,
-		"Owner":    owner,
+		"Id":        id,
+		"Items":     items,
+		"ThisPage":  page,
+		"Current":   currentId,
+		"Owner":     owner,
+		"IsManager": isManager,
 	}
 
 	if page > 1 {
@@ -523,11 +572,18 @@ func playlistWatchQueue(c *gin.Context) {
 }
 
 func playlistWatchController(c *gin.Context) {
-	id := c.Param("id")
-
 	fail := func(msg template.HTML, err error) {
 		slog.Warn("Playlist fetch error", "msg", msg, "err", err)
-		SSR(playlistWatchInvalidTmpl, c, "layout", defaultErrorMsg(msg))
+		if len(msg) == 0 {
+			msg = "Internal server error. Please try again later."
+		}
+		Toast(c, ToastError, "Unable to fetch playlist controller", msg)
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
 	}
 
 	tx, err := db.DB.Begin()
@@ -547,34 +603,62 @@ func playlistWatchController(c *gin.Context) {
 		return
 	}
 
+	username, _ := middlewares.GetAuthUsername(c)
+	isManager, err := isManager(tx, username, id)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
 	args := gin.H{
 		"Id":               id,
 		"Name":             name,
 		"Owner":            owner,
 		"CreatedTimestamp": createdTimestamp,
+		"IsManager":        isManager,
 	}
 
 	if current.Valid {
 		var mediaId int
 		var title string
 		var artist string
+		var altTitle string
+		var altArtist string
 		var duration int
 		var url string
-		err = tx.QueryRow("SELECT m.id, m.title, m.artist, m.duration, m.url FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1", current).Scan(&mediaId, &title, &artist, &duration, &url)
+		var mediaAddTimestamp time.Time
+		var itemAddTimestamp time.Time
+		err = tx.QueryRow(`
+			SELECT
+				m.id,
+				m.title,
+				m.artist,
+				COALESCE(a.alt_title, m.title),
+				COALESCE(a.alt_artist, m.artist),
+				m.duration,
+				m.url,
+				m.add_timestamp,
+				i.add_timestamp
+			FROM playlist_items i
+			JOIN medias m ON i.media = m.id
+			LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = i.playlist
+			WHERE i.id = $1`, current).Scan(&mediaId, &title, &artist, &altTitle, &altArtist, &duration, &url, &mediaAddTimestamp, &itemAddTimestamp)
 		if err != nil {
 			fail("", err)
 			return
 		}
 		args["Media"] = gin.H{
-			"Id":             mediaId,
-			"ItemId":         current.Int32,
-			"Type":           "yt",
-			"URL":            url,
-			"Title":          title,
-			"Artist":         artist,
-			"OriginalTitle":  title,
-			"OriginalArtist": artist,
-			"Duration":       time.Duration(duration) * time.Second,
+			"Id":                mediaId,
+			"ItemId":            current.Int32,
+			"Type":              "yt",
+			"URL":               url,
+			"Title":             altTitle,
+			"Artist":            altArtist,
+			"OriginalTitle":     title,
+			"OriginalArtist":    artist,
+			"Duration":          time.Duration(duration) * time.Second,
+			"MediaAddTimestamp": mediaAddTimestamp,
+			"ItemAddTimestamp":  itemAddTimestamp,
 		}
 	}
 
@@ -586,7 +670,7 @@ func playlistWatchController(c *gin.Context) {
 	SSR(playlistWatchTmpl, c, "controller", args)
 }
 
-func localRebalance(tx *sql.Tx, playlist string, startOrder int, endOrder int, numInsert int) error {
+func localRebalance(tx *sql.Tx, playlist int, startOrder int, endOrder int, numInsert int) error {
 	alpha := 1.5
 	beta := 2.5
 
@@ -631,7 +715,7 @@ func localRebalance(tx *sql.Tx, playlist string, startOrder int, endOrder int, n
 	return nil
 }
 
-func playlistAddBackground(playlist string, socketId string, canonInfo *media.MediaCanonicalizeInfo, pos PlaylistAddPosition) {
+func playlistAddBackground(playlist int, socketId string, canonInfo *media.MediaCanonicalizeInfo, pos PlaylistAddPosition) {
 	ctx := context.Background()
 	fail := func(msg template.HTML, err error) {
 		slog.Warn("Playlist item add error", "msg", msg, "err", err)
@@ -669,7 +753,11 @@ func playlistAddBackground(playlist string, socketId string, canonInfo *media.Me
 			}
 
 			if err == sql.ErrNoRows {
-				err = tx.QueryRow("INSERT INTO medias (title, artist, duration, url) VALUES ($1, $2, $3, $4) RETURNING id", entry.ResolveInfo.Title, entry.ResolveInfo.Artist, int(entry.ResolveInfo.Duration.Seconds()), entry.CanonInfo.Url).Scan(&id)
+				slog.Warn(string(entry.CanonInfo.Kind))
+				err = tx.QueryRow(
+					"INSERT INTO medias (media_type, title, artist, duration, url, aspect_ratio) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+					string(entry.CanonInfo.Kind), entry.ResolveInfo.Title, entry.ResolveInfo.Artist, int(entry.ResolveInfo.Duration.Seconds()), entry.CanonInfo.Url, entry.ResolveInfo.AspectRatio,
+				).Scan(&id)
 				if err != nil {
 					return err
 				}
@@ -817,20 +905,11 @@ func playlistAddBackground(playlist string, socketId string, canonInfo *media.Me
 		msg = fmt.Sprintf("Media list %s - %s added to playlist", title, artist)
 	}
 
-	err = WebSocketEvent(socketId, "refresh-playlist")
-	if err != nil {
-		slog.Warn("Unable to send refresh-playlist event to client", "sid", socketId)
-	}
+	WebSocketEvent(socketId, "refresh-playlist")
 	WebSocketToast(socketId, ToastInfo, "Media added successfully", template.HTML(template.HTMLEscapeString(msg)))
 }
 
 func playlistAdd(c *gin.Context) {
-	id := c.Param("id")
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	pos := c.PostForm("add-position")
-	url := c.PostForm("url")
-	wsId := c.PostForm("websocket-id")
-
 	fail := func(msg template.HTML, err error) {
 		slog.Warn("Playlist item add error", "msg", msg, "err", err)
 		if len(msg) == 0 {
@@ -839,6 +918,17 @@ func playlistAdd(c *gin.Context) {
 		triggerRefresh(c)
 		Toast(c, ToastError, "Unable to add media to playlist", msg)
 	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
+	}
+
+	username, loggedIn := middlewares.GetAuthUsername(c)
+	pos := c.PostForm("add-position")
+	url := c.PostForm("url")
+	wsId := c.PostForm("websocket-id")
 
 	if !loggedIn {
 		fail("You must be logged in to add media to this playlist.", nil)
@@ -863,13 +953,23 @@ func playlistAdd(c *gin.Context) {
 	defer tx.Rollback()
 
 	var dummy int
-	err = tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1 AND owner_username = $2", id, username).Scan(&dummy)
+	err = tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&dummy)
 	if err == sql.ErrNoRows {
-		fail("You must be a manager of this playlist to modify its content.", err)
+		fail("Playlist not found.", err)
 		return
 	} else if err != nil {
 		fail("", err)
 		return
+	}
+
+	isManager, err := isManager(tx, username, id)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
+	if !isManager {
+		fail("You must be a manager of this playlist to add media", nil)
 	}
 
 	canonInfo, err := media.CanonicalizeMedia(url)
@@ -884,12 +984,23 @@ func playlistAdd(c *gin.Context) {
 	}
 
 	go playlistAddBackground(id, wsId, canonInfo, PlaylistAddPosition(pos))
-	Toast(c, ToastInfo, "Media added successfully", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Adding media with URL %s to playlist...", url))))
+	Toast(c, ToastInfo, "Adding new media", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Adding media with URL %s to playlist...", url))))
+}
+
+func sendMediaChanged(id int, itemId int) {
+	var payload MediaChangedPayload
+	err := db.DB.QueryRow("SELECT m.media_type, m.url, m.aspect_ratio FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1", itemId).Scan(&payload.Type, &payload.Url, &payload.AspectRatio)
+	if err != nil && err != sql.ErrNoRows {
+		slog.Warn("Unable to query current media", "pid", id, "iid", itemId, "err", err)
+		return
+	}
+
+	if err == nil {
+		WebSocketMediaChange(id, "", payload)
+	}
 }
 
 func playlistGoto(c *gin.Context) {
-	id := c.Param("id")
-
 	fail := func(msg template.HTML, err error) {
 		slog.Warn("Playlist goto error", "msg", msg, "err", err)
 		if len(msg) == 0 {
@@ -897,6 +1008,12 @@ func playlistGoto(c *gin.Context) {
 		}
 		triggerRefresh(c)
 		Toast(c, ToastError, "Unable to change current item in playlist", msg)
+	}
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
 	}
 
 	username, loggedIn := middlewares.GetAuthUsername(c)
@@ -918,6 +1035,17 @@ func playlistGoto(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	isManager, err := isManager(tx, username, id)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
+	if !isManager {
+		fail("You must be the manager of this playlist to set the current item", nil)
+		return
+	}
+
 	var dummy int
 	err = tx.QueryRow("SELECT 1 FROM playlist_items WHERE id = $1 AND playlist = $2", itemId, id).Scan(&dummy)
 	if err != nil {
@@ -925,15 +1053,25 @@ func playlistGoto(c *gin.Context) {
 		return
 	}
 
-	_, err = tx.Exec("UPDATE playlists SET current = $1 WHERE id = $2 AND owner_username = $3", itemId, id, username)
+	_, err = tx.Exec("UPDATE playlists SET current = $1 WHERE id = $2", itemId, id)
 	if err != nil {
 		fail("", err)
 		return
 	}
 
+	go sendMediaChanged(id, itemId)
+
 	var title string
 	var artist string
-	err = tx.QueryRow("SELECT m.title, m.artist FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1 AND i.playlist = $2", itemId, id).Scan(&title, &artist)
+	err = tx.QueryRow(`
+		SELECT
+			COALESCE(a.alt_title, m.title),
+			COALESCE(a.alt_artist, m.artist)
+		FROM playlist_items i
+		JOIN medias m ON i.media = m.id
+		LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = i.playlist
+		WHERE i.id = $1 and i.playlist = $2
+	`, itemId, id).Scan(&title, &artist)
 	if err != nil {
 		fail("Item does not belong to playlist", err)
 		return
@@ -945,7 +1083,7 @@ func playlistGoto(c *gin.Context) {
 	}
 
 	triggerRefresh(c)
-	Toast(c, ToastInfo, "Playlist current media changed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Current media is now %s - %s", title, artist))))
+	// Toast(c, ToastInfo, "Playlist current media changed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Current media is now %s - %s", title, artist))))
 }
 
 func playlistDelete(c *gin.Context) {
@@ -999,4 +1137,259 @@ func playlistDelete(c *gin.Context) {
 
 	triggerRefresh(c)
 	Toast(c, ToastInfo, "Playlist items removed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d item(s) are removed from the playlist", len(items)))))
+}
+
+func playlistSubmitMetadata(c *gin.Context) {
+	fail := func(msg template.HTML, err error) {
+		slog.Warn("Playlist metadata submit error", "msg", msg, "err", err)
+		if len(msg) == 0 {
+			msg = "Internal server error. Please try again later."
+		}
+		triggerRefresh(c)
+		Toast(c, ToastError, "Unable to submit metadata to playlist", msg)
+	}
+
+	username, loggedIn := middlewares.GetAuthUsername(c)
+	if !loggedIn {
+		fail("You must be logged in to change media metadata", nil)
+		return
+	}
+
+	title := c.PostForm("media-title")
+	if len(title) == 0 {
+		fail("New title must not be empty", nil)
+		return
+	}
+
+	artist := c.PostForm("media-artist")
+	if len(artist) == 0 {
+		fail("New artist must not be empty", nil)
+		return
+	}
+
+	tx, err := db.DB.Begin()
+	if err != nil {
+		fail("", err)
+		return
+	}
+	defer tx.Rollback()
+
+	id := c.Param("id")
+
+	var media int
+	err = tx.QueryRow("SELECT i.media FROM playlists p JOIN playlist_items i ON p.current = i.id WHERE p.id = $1 AND p.owner_username = $2", id, username).Scan(&media)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fail("No current playing media", err)
+			return
+		}
+
+		fail("", err)
+		return
+	}
+
+	_, err = tx.Exec("INSERT INTO alt_metadata (playlist, media, alt_title, alt_artist) VALUES ($1, $2, $3, $4) ON CONFLICT (playlist, media) DO UPDATE SET alt_title = excluded.alt_title, alt_artist = excluded.alt_artist", id, media, title, artist)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		fail("", err)
+		return
+	}
+
+	triggerRefresh(c)
+	playlistWatchController(c)
+	Toast(c, ToastInfo, "Metadata updated", "Metadata of current playlist item was updated successfully")
+}
+
+func playlistNextRequest(c *gin.Context) {
+	fail := func(msg template.HTML, err error, quiet bool) {
+		slog.Warn("Playlist next request error", "msg", msg, "err", err)
+		if len(msg) == 0 {
+			msg = "Internal server error. Please try again later."
+		}
+		triggerRefresh(c)
+		if !quiet {
+			Toast(c, ToastError, "Unable to send next request to server", msg)
+		}
+	}
+
+	username, loggedIn := middlewares.GetAuthUsername(c)
+	quiet := c.PostForm("quiet") == "true"
+
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("", err, false)
+		return
+	}
+
+	if !loggedIn {
+		fail("You must be logged in to request next media", err, quiet)
+		return
+	}
+
+	err = NextRequest(id, username)
+	if err != nil {
+		fail("", err, false)
+		return
+	}
+
+	triggerRefresh(c)
+	if !quiet {
+		Toast(c, ToastInfo, "Next request sent", "Successfully sent next request")
+	}
+}
+
+func PlaylistUpdateCurrent(playlist int, sign, sortOrder string) (template.HTML, error) {
+	tx, err := db.DB.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	var current int
+	var currentOrder int
+	err = tx.QueryRow("SELECT i.id, i.item_order FROM playlists p JOIN playlist_items i ON p.current = i.id WHERE p.id = $1", playlist).Scan(&current, &currentOrder)
+	if err != nil {
+		return "", err
+	}
+
+	var next int
+	err = tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 AND item_order "+sign+" $2 ORDER BY item_order "+sortOrder, playlist, currentOrder).Scan(&next)
+	if err == sql.ErrNoRows {
+		err = tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 ORDER BY item_order "+sortOrder, playlist).Scan(&next)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	var payload MediaChangedPayload
+	err = tx.QueryRow(`SELECT m.media_type, m.aspect_ratio, m.url FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1`, next).Scan(&payload.Type, &payload.AspectRatio, &payload.Url)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.Exec("UPDATE playlists SET current = $1 WHERE id = $2", next, playlist)
+	if err != nil {
+		return "", err
+	}
+
+	WebSocketMediaChange(playlist, "", payload)
+
+	if err = tx.Commit(); err != nil {
+		return "", err
+	}
+
+	return "", nil
+}
+
+func playlistPrev(c *gin.Context) {
+	fail := func(msg template.HTML, err error) {
+		slog.Warn("Error skipping prev media", "msg", msg, "err", err)
+		if len(msg) == 0 {
+			msg = "Internal server error. Please try again later."
+		}
+		triggerRefresh(c)
+		Toast(c, ToastError, "Unable to return to previous media", msg)
+	}
+
+	playlist, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
+	}
+
+	username, loggedIn := middlewares.GetAuthUsername(c)
+
+	if !loggedIn {
+		fail("You must be logged in to skip media in playlist", nil)
+		return
+	}
+
+	tx, err := db.DB.Begin()
+	if err != nil {
+		fail("", err)
+		return
+	}
+	defer tx.Rollback()
+
+	isManager, err := isManager(tx, username, playlist)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
+	if !isManager {
+		fail("You must be a playlist manager to skip media in playlist", nil)
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		fail("", err)
+		return
+	}
+
+	if msg, err := PlaylistUpdateCurrent(playlist, "<", "DESC"); err != nil {
+		fail(msg, err)
+		return
+	}
+
+	noswap(c)
+}
+
+func playlistNext(c *gin.Context) {
+	fail := func(msg template.HTML, err error) {
+		slog.Warn("Error skipping next media", "msg", msg, "err", err)
+		if len(msg) == 0 {
+			msg = "Internal server error. Please try again later."
+		}
+		triggerRefresh(c)
+		Toast(c, ToastError, "Unable to skip to next media", msg)
+	}
+
+	playlist, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		fail("Invalid playlist ID", err)
+		return
+	}
+
+	username, loggedIn := middlewares.GetAuthUsername(c)
+
+	if !loggedIn {
+		fail("You must be logged in to skip media in playlist", nil)
+		return
+	}
+
+	tx, err := db.DB.Begin()
+	if err != nil {
+		fail("", err)
+		return
+	}
+	defer tx.Rollback()
+
+	isManager, err := isManager(tx, username, playlist)
+	if err != nil {
+		fail("", err)
+		return
+	}
+
+	if !isManager {
+		fail("You must be a playlist manager to skip media in playlist", nil)
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		fail("", err)
+		return
+	}
+
+	if msg, err := PlaylistUpdateCurrent(playlist, ">", "ASC"); err != nil {
+		fail(msg, err)
+		return
+	}
+
+	noswap(c)
 }

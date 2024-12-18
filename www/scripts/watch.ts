@@ -1,5 +1,7 @@
 import htmx from "htmx.org";
-import { Plst4Socket } from "./websocket.js";
+import { MediaChangePayload, Plst4Socket } from "./websocket.js";
+import { Youtube } from "./players/youtube.js";
+import { Player } from "./players/player.js";
 
 (window as any).copyPrevInput = (e: MouseEvent) => {
   let elm = e.currentTarget as HTMLElement;
@@ -29,5 +31,26 @@ const socket = new Plst4Socket((msg) => {
     case "event":
       htmx.trigger(document.body, msg.payload);
       break;
+    case "media-change":
+      handleMediaChange(msg.payload);
+      htmx.trigger(document.body, "refresh-playlist");
+      break;
   }
 });
+
+const players = {
+  "yt": new Youtube(),
+} satisfies Record<string, Player>;
+
+const handleMediaChange = (payload: MediaChangePayload) => {
+  for (const [key, player] of Object.entries(players)) {
+    player.stop();
+    if (key === payload.type) {
+      player.show();
+      player.start(payload);
+    } else {
+      player.hide();
+    }
+  }
+};
+

@@ -122,7 +122,8 @@ func mediaInfoFromYT(info *goutubedl.Info) *MediaResolveInfo {
 		metadata = nil
 	}
 
-	return &MediaResolveInfo{Title: title, Artist: artist, Duration: duration, Metadata: metadata}
+	aspectRatio := fmt.Sprintf("%d/%d", int(info.Width), int(info.Height))
+	return &MediaResolveInfo{Title: title, Artist: artist, Duration: duration, AspectRatio: aspectRatio, Metadata: metadata}
 }
 
 func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) {

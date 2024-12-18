@@ -38,9 +38,7 @@ func WebSocketToast(socketId string, kind ToastKind, title template.HTML, descri
 		return
 	}
 
-	if err := WebSocketSwap(socketId, template.HTML(str.String())); err != nil {
-		slog.Warn("Unable to send WebSocketSwap message to client", "id", socketId, "err", err)
-	}
+	WebSocketSwap(socketId, template.HTML(str.String()))
 }
 
 func ToastRouter(g *gin.RouterGroup) {

@@ -12,6 +12,7 @@ type MediaResolveInfo struct {
 	Title    string
 	Artist   string
 	Duration time.Duration
+	AspectRatio string
 	Metadata []byte
 }
 
