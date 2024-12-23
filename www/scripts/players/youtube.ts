@@ -15,7 +15,7 @@ export class Youtube extends Player {
     waitUntilDefined(() => window["YT"], () => {
       waitUntilDefined(() => YT.Player, () => {
         console.log("Initializing YouTube embed player");
-        this.player = new YT.Player("#youtube-video-player", {
+        const player = new YT.Player("#youtube-video-player", {
           width: "100%",
           height: "100%",
           playerVars: {
@@ -28,6 +28,7 @@ export class Youtube extends Player {
           events: {
             onReady: () => {
               console.log("YouTube embed player initialized");
+              this.player = player;
               if (this.pendingPayload !== undefined) {
                 this.start(this.pendingPayload);
                 this.pendingPayload = undefined;
@@ -58,7 +59,6 @@ export class Youtube extends Player {
   }
 
   show() {
-    console.debug("wtf")
     document.querySelector("#youtube-video-player-wrapper")!.classList.add("show")
   }
 

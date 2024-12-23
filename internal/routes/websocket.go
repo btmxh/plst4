@@ -21,12 +21,16 @@ type WebSocketConnection struct {
 }
 
 type WebSocketMsgType string
+type WebSocketEventType string
 
 const (
 	Handshake    WebSocketMsgType = "handshake"
 	Swap         WebSocketMsgType = "swap"
 	Event        WebSocketMsgType = "event"
 	MediaChanged WebSocketMsgType = "media-change"
+
+	ManagersChanged WebSocketEventType = "refresh-managers"
+	PlaylistChanged WebSocketEventType = "refresh-playlist"
 )
 
 type MediaChangedPayload struct {
@@ -199,26 +203,21 @@ func WebSocketMediaChange(playlist int, socketId string, payload MediaChangedPay
 	}
 }
 
-func nextMedia(playlist int) error {
-	msg, err := PlaylistUpdateCurrent(playlist, ">", "ASC")
-	if err != nil {
-		slog.Warn("Unable to skip to next media", "msg", msg, "err", err)
-	}
-	return err
+func WebSocketPlaylistEvent(playlist int, event WebSocketEventType) {
+	manager.BroadcastPlaylist(playlist, WebSocketMsg{Type: Event, Payload: event})
 }
 
-func NextRequest(playlist int, username string) error {
+func NextRequest(playlist int, username string) (template.HTML, error) {
 	if p, ok := manager.playlists[playlist]; ok {
 		p.nextRequested[username] = struct{}{}
 
-		slog.Warn(username)
 		for username := range p.userSockets {
 			if username == "" {
 				continue
 			}
 
 			if _, ok := p.nextRequested[username]; !ok {
-				return nil
+				return "", nil
 			}
 		}
 
@@ -226,8 +225,9 @@ func NextRequest(playlist int, username string) error {
 			delete(p.nextRequested, k)
 		}
 
-		return nextMedia(playlist)
+		msg, err := PlaylistUpdateCurrent(playlist, ">", "ASC")
+		return msg, err
 	}
 
-	return nil
+	return "", nil
 }

@@ -8,7 +8,7 @@ const toggle = () => document.querySelectorAll(".navbar").forEach(n => n.classLi
 
 const threshold = 500; //ms
 let lastPress: number | undefined = undefined;
-window.addEventListener("keydown", ev => {
+document.addEventListener("keydown", ev => {
   if (ev.key !== " ") {
     lastPress = undefined;
     return;
@@ -23,4 +23,5 @@ window.addEventListener("keydown", ev => {
   }
 
   lastPress = now;
+  ev.preventDefault();
 });

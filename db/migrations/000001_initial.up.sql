@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS playlist_items (
   playlist INT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
   item_order INT NOT NULL,
   add_timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-  UNIQUE (playlist, item_order)
+  UNIQUE (playlist, item_order) DEFERRABLE INITIALLY IMMEDIATE
 );
 
 CREATE INDEX idx_playlist_item_order ON playlist_items(playlist, item_order);

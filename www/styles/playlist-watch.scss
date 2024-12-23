@@ -62,7 +62,8 @@
 
 
   &:has(#tab-queue:checked) #playlist-queue,
-  &:has(#tab-controller:checked) #playlist-controller {
+  &:has(#tab-controller:checked) #playlist-controller,
+  &:has(#tab-managers:checked) #playlist-managers {
     display: block;
   }
 
@@ -98,6 +99,11 @@
   }
 
   #playlist-queue {
+    .page-nav {
+      float: right;
+      width: auto;
+    }
+
     .playlist-entry {
       display: block;
 
@@ -120,6 +126,12 @@
       &:hover .playlist-utilities {
         display: inline;
       }
+    }
+  }
+
+  #playlist-managers {
+    .button-bar {
+      float: right;
     }
   }
 

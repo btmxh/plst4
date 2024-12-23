@@ -149,7 +149,7 @@ a,
 input:not(input[type="submit"]) {
   font-size: 1em;
   background-color: black;
-  accent-color: black;
+  accent-color: vars.$accent-color;
   color: white;
   outline: none;
   border-radius: .25em;
@@ -209,4 +209,9 @@ input[type="submit"]:not(.link-button) {
 
 footer {
   text-align: right;
+}
+
+ol {
+  list-style-type: decimal;
+  margin-left: 1em;
 }
