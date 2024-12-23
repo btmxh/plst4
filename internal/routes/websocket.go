@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/btmxh/plst4/internal/db"
 	"github.com/btmxh/plst4/internal/media"
@@ -47,6 +48,7 @@ type WebSocketMsg struct {
 type WebSocketManager struct {
 	playlists map[int]*PlaylistState
 	sockets   map[string]*websocket.Conn
+	mutex     sync.RWMutex
 }
 
 type PlaylistState struct {
@@ -99,6 +101,9 @@ var manager WebSocketManager = WebSocketManager{
 }
 
 func (manager *WebSocketManager) NumManagerWatching(playlist int) int {
+	manager.mutex.RLock()
+	defer manager.mutex.RUnlock()
+
 	if p, ok := manager.playlists[playlist]; ok {
 		return p.NumManagerWatching()
 	}
@@ -107,6 +112,9 @@ func (manager *WebSocketManager) NumManagerWatching(playlist int) int {
 }
 
 func (manager *WebSocketManager) Add(conn *websocket.Conn, playlist int, username string) string {
+	manager.mutex.Lock()
+	defer manager.mutex.Unlock()
+
 	id := uniuri.New()
 	if _, ok := manager.playlists[playlist]; !ok {
 		manager.playlists[playlist] = &PlaylistState{
@@ -122,18 +130,27 @@ func (manager *WebSocketManager) Add(conn *websocket.Conn, playlist int, usernam
 }
 
 func (manager *WebSocketManager) Remove(playlist int, username string, id string) {
+	manager.mutex.Lock()
+	defer manager.mutex.Unlock()
+
 	if manager.playlists[playlist].Remove(username, id) {
 		delete(manager.playlists, playlist)
 	}
 }
 
 func (manager *WebSocketManager) SendId(id string, msg WebSocketMsg) {
+	manager.mutex.RLock()
+	defer manager.mutex.RUnlock()
+
 	if socket, ok := manager.sockets[id]; ok {
 		send(id, socket, msg)
 	}
 }
 
 func (manager *WebSocketManager) BroadcastPlaylist(id int, msg WebSocketMsg) {
+	manager.mutex.RLock()
+	defer manager.mutex.RUnlock()
+
 	if p, ok := manager.playlists[id]; ok {
 		p.Broadcast(msg)
 	}
