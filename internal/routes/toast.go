@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/btmxh/plst4/internal/html"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,9 +19,8 @@ const (
 )
 
 func Toast(c *gin.Context, kind ToastKind, title template.HTML, description template.HTML) {
-	// c.Header("Hx-Reswap", "afterbegin")
-	// c.Header("Hx-Retarget", ".toast-notification-box")
-	SSR(toastTemplate, c, "content", gin.H{
+	noswap(c)
+	html.Render(toastTemplate, c, "content", gin.H{
 		"Title":       title,
 		"Description": description,
 		"Kind":        kind,

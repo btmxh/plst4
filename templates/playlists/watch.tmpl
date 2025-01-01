@@ -80,7 +80,9 @@
     <input class="accent-background" type="submit" value="Move up" hx-post="/watch/{{.Id}}/queue/up">
     <input class="accent-background" type="submit" value="Move down" hx-post="/watch/{{.Id}}/queue/down">
     {{end}}
+    {{if HasUsername .Context}}
     <input class="accent-background" type="submit" value="Next Request" hx-post="/watch/{{.Id}}/queue/nextreq">
+    {{end}}
     {{if .IsManager}}
     <input class="accent-background" type="submit" value="Delete" hx-delete="/watch/{{.Id}}/queue/delete">
     {{end}}

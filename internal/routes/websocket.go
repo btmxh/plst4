@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/btmxh/plst4/internal/auth"
 	"github.com/btmxh/plst4/internal/db"
 	"github.com/btmxh/plst4/internal/media"
-	"github.com/btmxh/plst4/internal/middlewares"
 	"github.com/dchest/uniuri"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/net/websocket"
@@ -164,7 +164,7 @@ func WebSocketRouter(g *gin.RouterGroup) {
 			return
 		}
 
-		username, _ := middlewares.GetAuthUsername(c)
+		username := auth.GetUsername(c)
 		websocket.Handler(func(conn *websocket.Conn) {
 			defer conn.Close()
 
@@ -224,7 +224,7 @@ func WebSocketPlaylistEvent(playlist int, event WebSocketEventType) {
 	manager.BroadcastPlaylist(playlist, WebSocketMsg{Type: Event, Payload: event})
 }
 
-func NextRequest(playlist int, username string) (template.HTML, error) {
+func NextRequest(playlist int, username string) error {
 	if p, ok := manager.playlists[playlist]; ok {
 		p.nextRequested[username] = struct{}{}
 
@@ -234,7 +234,7 @@ func NextRequest(playlist int, username string) (template.HTML, error) {
 			}
 
 			if _, ok := p.nextRequested[username]; !ok {
-				return "", nil
+				return nil
 			}
 		}
 
@@ -242,9 +242,9 @@ func NextRequest(playlist int, username string) (template.HTML, error) {
 			delete(p.nextRequested, k)
 		}
 
-		msg, err := PlaylistUpdateCurrent(playlist, ">", "ASC")
-		return msg, err
+		err := PlaylistUpdateCurrent(playlist, ">", "ASC")
+		return err
 	}
 
-	return "", nil
+	return nil
 }
