@@ -45,7 +45,7 @@ func main() {
 	}
 	defer db.CloseDB()
 
-	if err = mailer.InitNetMailer(); err != nil {
+	if err = mailer.InitMailer(); err != nil {
 		panic(err)
 	}
 
