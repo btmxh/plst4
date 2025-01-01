@@ -2,10 +2,9 @@ package routes
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"html/template"
-	"log/slog"
-	_ "log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -13,14 +12,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/btmxh/plst4/internal/auth"
 	"github.com/btmxh/plst4/internal/db"
+	"github.com/btmxh/plst4/internal/errs"
+	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/mailer"
 	"github.com/btmxh/plst4/internal/middlewares"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/dchest/uniuri"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/gomail.v2"
 )
 
 func getAuthTemplate(name string) *template.Template {
@@ -42,26 +43,28 @@ func defaultErrorMsg(msg template.HTML) gin.H {
 }
 
 func redirectIfLoggedIn(c *gin.Context) bool {
-	_, loggedIn := middlewares.GetAuthUsername(c)
-	if loggedIn {
+	if auth.IsLoggedIn(c) {
 		if c.Request.Method == "POST" {
 			c.Header("Hx-Redirect", "/")
 		} else {
 			c.Redirect(http.StatusTemporaryRedirect, "/")
 		}
+
+		return true
 	}
-	return loggedIn
+
+	return false
 }
 
-func authSSR(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
+func authRender(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
 	if !redirectIfLoggedIn(c) {
-		SSR(tmpl, c, block, arg)
+		html.Render(tmpl, c, block, arg)
 	}
 }
 
 func authSSRRoute(tmpl *template.Template, block string, arg gin.H) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authSSR(tmpl, c, block, arg)
+		authRender(tmpl, c, block, arg)
 	}
 }
 
@@ -77,155 +80,139 @@ var recoverEmailTmpl = getEmailTemplate("recover")
 
 func AuthRouter(r *gin.RouterGroup) http.Handler {
 	handler := http.NewServeMux()
-	r.POST("/register/submit", register)
-	r.GET("/register/form", authSSRRoute(registerTmpl, "form", gin.H{}))
-	r.GET("/register", authSSRRoute(registerTmpl, "layout", gin.H{}))
 
-	r.POST("/login/submit", login)
-	r.GET("/login/form", authSSRRoute(loginTmpl, "form", gin.H{}))
-	r.GET("/login", authSSRRoute(loginTmpl, "layout", gin.H{}))
+	get := r.Group("")
+	get.Use(middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		// Toast(c, ToastError, title, desc)
+	}))
 
-	r.POST("/recover/submit", recoverFunc)
-	r.GET("/recover/form", authSSRRoute(recoverTmpl, "form", gin.H{}))
-	r.GET("/recover", authSSRRoute(recoverTmpl, "layout", gin.H{}))
+	get.GET("/register", authSSRRoute(registerTmpl, "layout", gin.H{}))
+	get.GET("/login", authSSRRoute(loginTmpl, "layout", gin.H{}))
+	get.GET("/recover", authSSRRoute(recoverTmpl, "layout", gin.H{}))
+	get.GET("/confirmmail", authSSRRoute(confirmMailTmpl, "layout", gin.H{}))
+	get.GET("/recoverdone", authSSRRoute(recoverDoneTmpl, "layout", gin.H{}))
+	get.GET("/resetpassword", resetPassword)
 
-	r.POST("/confirmmail/submit", confirmMail)
-	r.GET("/confirmmail/form", authSSRRoute(confirmMailTmpl, "form", gin.H{}))
-	r.GET("/confirmmail", authSSRRoute(confirmMailTmpl, "layout", gin.H{}))
-
-	r.GET("/recoverdone/form", authSSRRoute(recoverDoneTmpl, "form", gin.H{}))
-	r.GET("/recoverdone", authSSRRoute(recoverDoneTmpl, "layout", gin.H{}))
-
-	r.POST("/logout", logout)
-
-	r.GET("/resetpassword", resetPassword)
-	r.POST("/resetpassword/submit", resetPasswordSubmit)
+	post := r.Group("")
+	post.Use(middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		Toast(c, ToastError, title, desc)
+	}))
+	post.POST("/register/submit", register)
+	post.POST("/login/submit", login)
+	post.POST("/recover/submit", recoverFunc)
+	post.POST("/confirmmail/submit", confirmMail)
+	post.POST("/logout", logout)
+	post.POST("/resetpassword/submit", resetPasswordSubmit)
 	return handler
 }
 
-func sendMail(dest *mail.Address, tmpl *template.Template, data any) error {
-	m := gomail.NewMessage()
-	m.SetHeader("From", mailer.Dealer.Username)
-	m.SetHeader("To", dest.Address)
-	var writer strings.Builder
-	err := tmpl.ExecuteTemplate(&writer, "layout", data)
-	if err != nil {
-		return err
-	}
-	m.SetBody("text/html", writer.String())
-	err = mailer.Dealer.DialAndSend(m)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
+var invalidUsernameError = errors.New("Username must be between 3 and 50 characters long and can only contain letters, numbers, hyphens (-), and underscores (_).")
+var emptyUsernameError = errors.New("Username must not be empty.")
+var usernameRegex = regexp.MustCompile("^[a-zA-Z0-9_-]{3,50}$")
+var invalidPasswordError = errors.New("Password must be at least 8 characters long and at most 64 characters long.")
+var emptyPasswordError = errors.New("Password must not be empty.")
+var invalidPasswordHashError = errors.New("Invalid password. Please try another one.")
+var passwordRegex = regexp.MustCompile("[^a-zA-Z0-9_!@#$%^&*()-+=]{8,64}")
+var passwordNotMatchError = errors.New("Passwords do not match.")
+var invalidEmailError = errors.New("Invalid email.")
+var usernameAlreadyTakenError = errors.New("Username is already taken.")
+var emailAlreadyTakenError = errors.New("Email is already taken.")
+var noSuchAccountError = errors.New("No such account with that email address.")
+var wrongCredentialsError = errors.New("Either username or password is incorrect.")
+var invalidLinkError = errors.New("This link is either invalid or expired. Please request a new one.")
+var invalidCodeError = errors.New("This code is either invalid or expired. Please request a new one.")
 
 func register(c *gin.Context) {
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Register error", "msg", msg, "err", err)
-		SSR(registerTmpl, c, "form", defaultErrorMsg(msg))
-	}
-
-	_, loggedIn := middlewares.GetAuthUsername(c)
-	if loggedIn {
-		fail("Already logged in, please sign out before proceeding.", nil)
+	stores.SetErrorTitle(c, "Register error")
+	if redirectIfLoggedIn(c) {
 		return
 	}
 
 	username := strings.TrimSpace(c.PostForm("username"))
 	// TODO: move compile out
-	if !regexp.MustCompile("^[a-zA-Z0-9_-]{3,50}$").MatchString(username) {
-		fail("Username must be between 3 and 50 characters long and can only contain letters, numbers, hyphens (-), and underscores (_).", nil)
+	if !usernameRegex.MatchString(username) {
+		errs.PublicError(c, invalidUsernameError)
 		return
 	}
 
 	password := c.PostForm("password")
-	if len(password) < 8 {
-		fail("Password must be at least 8 characters long", nil)
+	if !passwordRegex.MatchString(password) {
+		errs.PublicError(c, invalidPasswordError)
+		return
+	}
+
+	if password != c.PostForm("password-confirm") {
+		errs.PublicError(c, passwordNotMatchError)
 		return
 	}
 
 	password_hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		fail("", err)
-		return
-	}
-
-	if password != c.PostForm("password-confirm") {
-		fail("Password does not match.", nil)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidPasswordHashError)
 		return
 	}
 
 	email, err := mail.ParseAddress(c.PostForm("email"))
 	if err != nil {
-		fail("Invalid email", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidEmailError)
 		return
 	}
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	sqlCheck := func(msg template.HTML, q string, args ...any) bool {
+	sqlCheckFails := func(takenErr error, q string, args ...any) bool {
 		row := tx.QueryRow(q, args...)
 		var dummy int
-		err = row.Scan(&dummy)
-		if err == sql.ErrNoRows {
+		var hasRow bool
+		if row.Scan(&hasRow, &dummy) {
 			return true
-		} else if err != nil {
-			fail("", err)
-			return false
-		} else {
-			fail(msg, err)
-			return false
 		}
+
+		if hasRow {
+			errs.PublicError(c, takenErr)
+			return true
+		}
+
+		return false
 	}
 
-	if !sqlCheck("Username is already taken", "SELECT 1 FROM users WHERE username = $1", username) {
+	if sqlCheckFails(usernameAlreadyTakenError, "SELECT 1 FROM users WHERE username = $1", username) {
 		return
 	}
-	if !sqlCheck("Username is already taken", "SELECT 1 FROM pending_users WHERE username = $1", username) {
+	if sqlCheckFails(usernameAlreadyTakenError, "SELECT 1 FROM pending_users WHERE username = $1", username) {
 		return
 	}
-	if !sqlCheck("Email is already taken", "SELECT 1 FROM users WHERE email = $1", email.Address) {
+	if sqlCheckFails(emailAlreadyTakenError, "SELECT 1 FROM users WHERE email = $1", email.Address) {
 		return
 	}
-	if !sqlCheck("Email is already taken", "SELECT 1 FROM pending_users WHERE email = $1", email.Address) {
+	if sqlCheckFails(emailAlreadyTakenError, "SELECT 1 FROM pending_users WHERE email = $1", email.Address) {
 		return
 	}
 
 	identifier := uniuri.New()
-	go sendMail(email, confirmEmailTmpl, identifier)
+	go mailer.SendMailTemplated(email, "Confirm your plst4 email", confirmEmailTmpl, identifier)
 
-	_, err = tx.Exec("INSERT INTO pending_users (identifier, username, password_hashed, email) VALUES ($1, $2, $3, $4)", identifier, username, password_hashed, email.Address)
-	if err != nil {
-		fail("", err)
+	if tx.Exec(nil, "INSERT INTO pending_users (identifier, username, password_hashed, email) VALUES ($1, $2, $3, $4)", identifier, username, password_hashed, email.Address) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
-	PushURL(c, "/auth/confirmmail?username="+url.QueryEscape(username))
-	SSR(confirmMailTmpl, c, "form", gin.H{"FormUsername": username})
+	HxPushURL(c, "/auth/confirmmail?username="+url.QueryEscape(username))
+	html.Render(confirmMailTmpl, c, "form", gin.H{"FormUsername": username})
 }
 
 func login(c *gin.Context) {
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Login error", "msg", msg, "err", err)
-		SSR(loginTmpl, c, "form", defaultErrorMsg(msg))
-	}
-
-	_, loggedIn := middlewares.GetAuthUsername(c)
-	if loggedIn {
-		fail("Already logged in, please sign out before proceeding.", nil)
+	stores.SetErrorTitle(c, "Login error")
+	if redirectIfLoggedIn(c) {
 		return
 	}
 
@@ -233,263 +220,221 @@ func login(c *gin.Context) {
 	password := c.PostForm("password")
 
 	if len(username) == 0 {
-		fail("Username can't be empty", nil)
+		errs.PublicError(c, emptyUsernameError)
 		return
 	}
 	if len(password) == 0 {
-		fail("Username can't be empty", nil)
+		errs.PublicError(c, emptyPasswordError)
 		return
 	}
 
-	row := db.DB.QueryRow("SELECT password_hashed FROM users WHERE username = $1", username)
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
 
+	var hasRow bool
 	var hashed string
-	err := row.Scan(&hashed)
-
-	if err == nil {
-		if err = bcrypt.CompareHashAndPassword([]byte(hashed), []byte(password)); err != nil {
-			fail("Wrong password.", err)
-			return
-		}
-	} else if err == sql.ErrNoRows {
-		fail("No such account exists.", err)
-		return
-	} else {
-		fail("", err)
+	if tx.QueryRow("SELECT password_hashed FROM users WHERE username = $1", username).Scan(&hasRow, &hashed) {
 		return
 	}
 
-	now := time.Now()
+	if !hasRow {
+		errs.PublicError(c, wrongCredentialsError)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(hashed), []byte(password)); err != nil {
+		errs.PrivateError(c, err)
+		errs.PublicError(c, wrongCredentialsError)
+		return
+	}
+
 	timeout := 12 * time.Hour
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &jwt.RegisteredClaims{
-		Issuer:    "plst4-web",
-		Subject:   username,
-		Audience:  []string{"plst4.dev"},
-		ExpiresAt: &jwt.NumericDate{Time: now.Add(timeout)},
-		IssuedAt:  &jwt.NumericDate{Time: now},
-	})
-	signedToken, err := middlewares.Authorize(token)
+	signedToken, err := auth.Authorize(username, timeout)
 	if err != nil {
-		fail("Unable to generate login token. Please try again", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, errors.New("Unable to generate login token. Please try again"))
+		return
+	}
+
+	if tx.Commit() {
 		return
 	}
 
 	middlewares.SetAuthCookie(c, signedToken, timeout)
-	Redirect(c, "/")
+	HxRedirect(c, "/")
 }
 
 func recoverFunc(c *gin.Context) {
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Login error", "msg", msg, "err", err)
-		SSR(recoverTmpl, c, "form", defaultErrorMsg(msg))
-	}
-
-	_, loggedIn := middlewares.GetAuthUsername(c)
-	if loggedIn {
-		fail("Already logged in, please sign out before proceeding.", nil)
+	stores.SetErrorTitle(c, "Password recovery error")
+	if redirectIfLoggedIn(c) {
 		return
 	}
 
 	email, err := mail.ParseAddress(c.PostForm("email"))
 	if err != nil {
-		fail("Invalid email", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidEmailError)
 		return
 	}
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
-
 	defer tx.Rollback()
 
-	row := tx.QueryRow("SELECT 1 FROM users WHERE email = $1", email.Address)
 	var dummy int
-	err = row.Scan(&dummy)
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM users WHERE email = $1", email.Address).Scan(&hasRow, &dummy) {
+		return
+	}
+
 	if err == sql.ErrNoRows {
-		fail("No such account with that email address", err)
-		return
-	} else if err != nil {
-		fail("", err)
-		return
+		errs.PublicError(c, noSuchAccountError)
 	}
 
 	identifier := uniuri.New()
-	go sendMail(email, recoverEmailTmpl, "http://localhost:6972/auth/resetpassword?code="+identifier+"&email="+url.QueryEscape(email.Address))
+	hostname := "http://localhost:6972"
+	go mailer.SendMailTemplated(email, "Recover your plst4 account", recoverEmailTmpl, hostname+"/auth/resetpassword?code="+identifier+"&email="+url.QueryEscape(email.Address))
 
-	_, err = tx.Exec("INSERT INTO password_reset (email, identifier) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET identifier = EXCLUDED.identifier", email.Address, identifier)
-	if err != nil {
-		fail("", err)
+	if tx.Exec(nil, "INSERT INTO password_reset (email, identifier) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET identifier = EXCLUDED.identifier", email.Address, identifier) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
-	SSR(recoverDoneTmpl, c, "form", gin.H{})
+	html.Render(recoverDoneTmpl, c, "form", gin.H{})
 }
 
 func resetPassword(c *gin.Context) {
 	email := c.Query("email")
 	identifier := c.Query("code")
 
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Confirming email error", "msg", msg, "err", err)
-		SSR(newPasswordInvalidTmpl, c, "layout", Combine(defaultErrorMsg(msg)))
-	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRow("SELECT 1 FROM password_reset WHERE email = $1 AND identifier = $2", email, identifier)
-	slog.Info("email", "email", email, "id", identifier)
 	var dummy int
-	err = row.Scan(&dummy)
-	if err == sql.ErrNoRows {
-		fail("This link is invalid or expired. Please request a new one.", err)
-		return
-	} else if err != nil {
-		fail("", err)
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM password_reset WHERE email = $1 AND identifier = $2", email, identifier).Scan(&hasRow, &dummy) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if !hasRow {
+		errs.PublicError(c, invalidLinkError)
+		return
 	}
 
-	SSR(newPasswordTmpl, c, "layout", gin.H{"Identifier": identifier, "Email": email})
+	if tx.Commit() {
+		return
+	}
+
+	html.Render(newPasswordTmpl, c, "layout", gin.H{"Identifier": identifier, "Email": email})
 }
 
 func resetPasswordSubmit(c *gin.Context) {
+	stores.SetErrorTitle(c, "Password reset error")
 	email := c.PostForm("email")
 	identifier := c.PostForm("code")
 	password := c.PostForm("password")
 	passwordConfirm := c.PostForm("password-confirm")
 
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Confirming email error", "msg", msg, "err", err)
-		SSR(newPasswordTmpl, c, "form", Combine(defaultErrorMsg(msg)))
-	}
-
 	if password != passwordConfirm {
-		fail("Mismatched passwords", nil)
+		errs.PublicError(c, passwordNotMatchError)
 		return
 	}
 
-	if len(password) < 8 {
-		fail("Password must be at least 8 characters long", nil)
+	if !passwordRegex.MatchString(password) {
+		errs.PublicError(c, invalidPasswordError)
 		return
 	}
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
-
 	defer tx.Rollback()
 
-	result, err := tx.Exec("DELETE FROM password_reset WHERE email = $1 AND identifier = $2", email, identifier)
-	if err != nil {
-		fail("", err)
+	var result sql.Result
+	if tx.Exec(&result, "DELETE FROM password_reset WHERE email = $1 AND identifier = $2", email, identifier) {
 		return
 	}
 
 	if affected, err := result.RowsAffected(); affected == 0 || err != nil {
-		fail("This link is invalid or expired. Please request a new one.", err)
+		errs.PublicError(c, invalidLinkError)
 		return
 	}
 
 	password_hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		fail("", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidPasswordHashError)
 		return
 	}
 
-	_, err = tx.Exec("UPDATE users SET password_hashed = $1 WHERE email = $2", password_hashed, email)
-	if err != nil {
-		fail("", err)
+	if tx.Exec(nil, "UPDATE users SET password_hashed = $1 WHERE email = $2", password_hashed, email) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
 	var msg template.HTML = "Password reset successfully.<br>Please log in with your new password."
-	SSR(loginTmpl, c, "form", gin.H{"MessageString": &msg})
+	html.Render(loginTmpl, c, "form", gin.H{"MessageString": &msg})
 }
 
 func confirmMail(c *gin.Context) {
+	stores.SetErrorTitle(c, "Mail confirmation error")
+	if redirectIfLoggedIn(c) {
+		return
+	}
+
 	code := c.PostForm("code")
 	username := c.PostForm("username")
 
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Confirming email error", "msg", msg, "err", err)
-		SSR(confirmMailTmpl, c, "form", Combine(defaultErrorMsg(msg), gin.H{"FormUsername": username}))
-	}
-
-	_, loggedIn := middlewares.GetAuthUsername(c)
-	if loggedIn {
-		fail("Already logged in, please sign out before proceeding.", nil)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
-		return
-	}
-
 	defer tx.Rollback()
 
-	row := tx.QueryRow("SELECT password_hashed, email FROM pending_users WHERE username = $1 AND identifier = $2", username, code)
+	var hasRow bool
 	var password_hashed string
 	var email string
-	err = row.Scan(&password_hashed, &email)
-	if err != nil {
-		fail("Please recheck your code.", err)
+	if tx.QueryRow("SELECT password_hashed, email FROM pending_users WHERE username = $1 AND identifier = $2", username, code).Scan(&hasRow, &password_hashed, &email) {
 		return
 	}
 
-	result, err := tx.Exec("DELETE FROM pending_users WHERE username = $1 AND identifier = $2", username, code)
-	if err != nil {
-		fail("", err)
+	if !hasRow {
+		errs.PublicError(c, invalidCodeError)
 		return
 	}
 
-	if affected, err := result.RowsAffected(); affected == 0 || err != nil {
-		fail("Invalid email confirmation state.", err)
+	if tx.Exec(nil, "DELETE FROM pending_users WHERE username = $1 AND identifier = $2", username, code) {
 		return
 	}
 
-	_, err = tx.Exec("INSERT INTO users (username, password_hashed, email) VALUES ($1, $2, $3)", username, password_hashed, email)
-	if err != nil {
-		fail("", err)
+	if tx.Exec(nil, "INSERT INTO users (username, password_hashed, email) VALUES ($1, $2, $3)", username, password_hashed, email) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
 	var msg template.HTML = "Email confirmed successfully.<br>Please log in with your credentials."
-	SSR(loginTmpl, c, "form", gin.H{"MessageString": &msg})
+	html.Render(loginTmpl, c, "form", gin.H{"MessageString": &msg})
 }
 
 func logout(c *gin.Context) {
 	middlewares.Logout(c)
-	Redirect(c, "/")
+	HxRedirect(c, "/")
 }

@@ -2,7 +2,10 @@ package routes
 
 import (
 	"html/template"
+	"log/slog"
+	"strings"
 
+	"github.com/btmxh/plst4/internal/html"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,13 +19,26 @@ const (
 )
 
 func Toast(c *gin.Context, kind ToastKind, title template.HTML, description template.HTML) {
-	// c.Header("Hx-Reswap", "afterbegin")
-	// c.Header("Hx-Retarget", ".toast-notification-box")
-	SSR(toastTemplate, c, "content", gin.H{
+	noswap(c)
+	html.Render(toastTemplate, c, "content", gin.H{
 		"Title":       title,
 		"Description": description,
 		"Kind":        kind,
 	})
+}
+
+func WebSocketToast(socketId string, kind ToastKind, title template.HTML, description template.HTML) {
+	var str strings.Builder
+	if err := toastTemplate.ExecuteTemplate(&str, "content", gin.H{
+		"Title":       title,
+		"Description": description,
+		"Kind":        kind,
+	}); err != nil {
+		slog.Warn("error rendering SSR page", "err", err, "name", toastTemplate.Name())
+		return
+	}
+
+	WebSocketSwap(socketId, template.HTML(str.String()))
 }
 
 func ToastRouter(g *gin.RouterGroup) {

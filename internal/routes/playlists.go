@@ -1,29 +1,41 @@
 package routes
 
 import (
-	"crypto"
+	"context"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/btmxh/plst4/internal/auth"
 	"github.com/btmxh/plst4/internal/db"
-	"github.com/btmxh/plst4/internal/ds"
+	"github.com/btmxh/plst4/internal/errs"
+	"github.com/btmxh/plst4/internal/html"
+	"github.com/btmxh/plst4/internal/media"
 	"github.com/btmxh/plst4/internal/middlewares"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PlaylistFilter string
+type PlaylistAddPosition string
+
+const (
+	AddToStart PlaylistAddPosition = "add-to-start"
+	AddToEnd   PlaylistAddPosition = "add-to-end"
+	QueueNext  PlaylistAddPosition = "queue-next"
+	gap        int                 = 1 << 10
+)
+
 type QueriedPlaylist struct {
-	Id               uuid.UUID
+	Id               int
 	Name             string
 	OwnerUsername    string
 	CreatedTimestamp time.Time
@@ -33,14 +45,12 @@ type QueriedPlaylist struct {
 }
 
 type QueuePlaylistItem struct {
-	Title          string
-	Artist         string
-	URL            string
-	Id             uuid.UUID
-	Prev           uuid.NullUUID
-	Next           uuid.NullUUID
-	Index          int
-	PositionalHash string
+	Title    string
+	Artist   string
+	URL      string
+	Duration time.Duration
+	Id       int
+	Index    int
 }
 
 const (
@@ -54,37 +64,108 @@ var playlistWatchTmpl = getTemplate("watch", "templates/playlists/watch.tmpl")
 var playlistWatchInvalidTmpl = getTemplate("watch", "templates/playlists/watch_invalid.tmpl")
 var playlistQueryResult = getTemplate("playlist_query_result", "templates/playlists/playlist_query_result.tmpl")
 
-func hashSecret(secret string, args ...string) string {
-	hasher := crypto.SHA256.New()
-	for _, arg := range args {
-		fmt.Fprintf(hasher, "%s\000", arg)
-	}
-	return base64.StdEncoding.EncodeToString(hasher.Sum([]byte(secret)))
+var playlistNameRegex = regexp.MustCompile(`^[a-zA-Z0-9 ]{4,100}$`)
+var unauthorizedError = errors.New("You must be logged in to do this.")
+var invalidPlaylistError = errors.New("Invalid playlist. Refresh the page maybe?")
+var missingPermissionError = errors.New("You must be a manager of this playlist to do this.")
+var noCurrentMediaError = errors.New("No currently playing media.")
+
+func noswap(c *gin.Context) {
+	c.Header("Hx-Reswap", "none")
 }
 
-func positionalHash(secret string, id ds.NonNilId, index int) string {
-	return hashSecret(secret, id.String(), strconv.Itoa(index))
+func isManager(tx *db.Tx, username string, playlist int) (isManager, hasError bool) {
+	var dummy int
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1 AND owner_username = $2", playlist, username).Scan(&hasRow, &dummy) {
+		return false, true
+	}
+
+	if hasRow {
+		return true, false
+	}
+
+	if tx.QueryRow("SELECT 1 FROM playlist_manage WHERE playlist = $1 AND username = $2", playlist, username).Scan(&hasRow, &dummy) {
+		return false, true
+	}
+
+	return hasRow, false
+}
+
+func getCheckedItems(c *gin.Context) ([]int, error) {
+	var args map[string][]string
+	if c.Request.Method == "DELETE" {
+		args = c.Request.URL.Query()
+	} else {
+		if err := c.Request.ParseForm(); err != nil {
+			return nil, err
+		}
+		args = c.Request.PostForm
+	}
+
+	var items []int
+	for key, value := range args {
+		if !slices.Contains(value, "on") {
+			continue
+		}
+
+		idStr := strings.TrimPrefix(key, "pic-")
+		if idStr == key {
+			continue
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			slog.Warn("Invalid ID (ignoring): %s (parse error %v)", idStr, err)
+			return nil, err
+		}
+
+		items = append(items, id)
+
+	}
+
+	return items, nil
+}
+
+func updateTitle(c *gin.Context, title string) {
+	title = template.HTMLEscapeString(title)
+	c.Writer.WriteString("<title>")
+	c.Writer.WriteString(title)
+	c.Writer.WriteString("</title>")
 }
 
 func WatchRouter(g *gin.RouterGroup) {
-	g.GET("/", SSRRoute(watchTemplate, "layout", gin.H{}))
-	g.GET("/:id/", playlistWatch)
-	g.GET("/:id/controller", playlistWatchController)
-	g.PATCH("/:id/controller/rename", func(c *gin.Context) {
-		renamePlaylist(c)
+	g.GET("/", html.RenderFunc(watchTemplate, "layout", gin.H{}))
+	idGroup := g.Group("/:id/")
+	idGroup.Use(middlewares.PlaylistIdMiddleware())
+	idGroup.GET("/", playlistWatch)
+	idGroup.GET("/controller", playlistWatchController)
+	idGroup.POST("/controller/submit", playlistSubmitMetadata)
+	idGroup.PATCH("/controller/rename", func(c *gin.Context) {
+		name, renamed := renamePlaylist(c)
+		if renamed {
+			updateTitle(c, fmt.Sprintf("plst4 - %s", name))
+		}
 		playlistWatchController(c)
 	})
-	g.DELETE("/:id/controller/delete", func(c *gin.Context) {
+	idGroup.DELETE("/controller/delete", func(c *gin.Context) {
 		deletePlaylist(c)
-		Redirect(c, "/watch")
+		HxRedirect(c, "/watch")
 	})
-	g.GET("/:id/queue/firstpage", playlistWatchQueueFirstPage)
-	g.GET("/:id/queue/lastpage", playlistWatchQueueLastPage)
-	g.GET("/:id/queue/prevpage", playlistWatchQueuePrevPage)
-	g.GET("/:id/queue/nextpage", playlistWatchQueueNextPage)
-	g.GET("/:id/queue/thispage", playlistWatchQueueNextPage) // the logic is the same
-	g.POST("/:id/queue/add", playlistAdd)
-	g.PATCH("/:id/queue/goto/:item-id", playlistGoto)
+	idGroup.GET("/queue", playlistWatchQueue)
+	idGroup.GET("/queue/current", playlistWatchQueueCurrent)
+	idGroup.POST("/queue/add", playlistAdd)
+	idGroup.DELETE("/queue/delete", playlistDelete)
+	idGroup.PATCH("/queue/goto/:item-id", playlistGoto)
+	idGroup.POST("/queue/nextreq", playlistNextRequest)
+	idGroup.POST("/queue/prev", playlistPrev)
+	idGroup.POST("/queue/next", playlistNext)
+	idGroup.POST("/queue/up", playlistMoveUp)
+	idGroup.POST("/queue/down", playlistMoveDown)
+	idGroup.GET("/managers", playlistManagers)
+	idGroup.POST("/managers/add", playlistManagerAdd)
+	idGroup.DELETE("/managers/delete", playlistManagerDelete)
+
 }
 
 func PlaylistRouter(g *gin.RouterGroup) {
@@ -92,74 +173,100 @@ func PlaylistRouter(g *gin.RouterGroup) {
 	g.POST("/new", newPlaylist)
 	g.PATCH("/:id/rename", func(c *gin.Context) {
 		renamePlaylist(c)
-		Refresh(c)
+		HxRefresh(c)
 	})
 	g.DELETE("/:id/delete", func(c *gin.Context) {
 		deletePlaylist(c)
-		Refresh(c)
+		HxRefresh(c)
 	})
 }
 
+var invalidParam = errors.New("Invalid parameter")
+
 func search(c *gin.Context) {
-	username, _ := middlewares.GetAuthUsername(c)
+	username := auth.GetUsername(c)
 
 	query := strings.ToLower(c.Query("query"))
 	filter := c.Query("filter")
 	offsetStr := c.DefaultQuery("offset", "0")
-
 	limit := 10
-
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		Toast(c, ToastError, "Unable to fetch playlists", msg)
-	}
 
 	offset, err := strconv.Atoi(offsetStr)
 
 	if err != nil {
-		fail("Invalid offset value", err)
+		errs.PrivateError(c, fmt.Errorf("Invalid offset: %w", err))
+		errs.PublicError(c, invalidParam)
 		return
 	}
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
 	var rows *sql.Rows
+	var hasErr bool
 	if filter == string(All) {
-		rows, err = tx.Query("SELECT id, name, owner_username, created_timestamp, item_count FROM playlists WHERE POSITION($1 IN LOWER(name)) > 0 ORDER BY created_timestamp LIMIT $2 OFFSET $3", query, limit+1, offset)
+		hasErr = tx.Query(&rows,
+			`SELECT id, name, owner_username, created_timestamp, 
+              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
+         FROM playlists 
+         WHERE POSITION($1 IN LOWER(name)) > 0 
+         ORDER BY created_timestamp 
+         LIMIT $2 OFFSET $3`,
+			query, limit+1, offset,
+		)
 	} else if filter == string(Owned) {
-		rows, err = tx.Query("SELECT id, name, owner_username, created_timestamp, item_count FROM playlists WHERE POSITION($1 IN LOWER(name)) > 0 AND owner_username = $4 ORDER BY created_timestamp LIMIT $2 OFFSET $3", query, limit+1, offset, username)
+		hasErr = tx.Query(&rows,
+			`SELECT id, name, owner_username, created_timestamp, 
+              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
+         FROM playlists 
+         WHERE POSITION($1 IN LOWER(name)) > 0 
+           AND owner_username = $4 
+         ORDER BY created_timestamp 
+         LIMIT $2 OFFSET $3`,
+			query, limit+1, offset, username,
+		)
 	} else if filter == string(Managed) {
-		rows, err = tx.Query("SELECT id, name, owner_username, created_timestamp, item_count FROM playlists WHERE POSITION($1 IN LOWER(name)) > 0 AND owner_username = $4 ORDER BY created_timestamp LIMIT $2 OFFSET $3", query, limit+1, offset, username)
+		hasErr = tx.Query(&rows,
+			`SELECT id, name, owner_username, created_timestamp, 
+              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
+         FROM playlists 
+         WHERE POSITION($1 IN LOWER(name)) > 0 
+           AND (owner_username = $4 OR $4 IN (SELECT username FROM playlist_manage WHERE playlist = playlists.id))
+         ORDER BY created_timestamp 
+         LIMIT $2 OFFSET $3`,
+			query, limit+1, offset, username,
+		)
 	} else {
-		fail("Invalid filter type", nil)
+		errs.PrivateError(c, fmt.Errorf("Invalid filter: %s", filter))
+		errs.PublicError(c, invalidParam)
+		return
 	}
 
-	if err != nil {
-		fail("", err)
+	if hasErr {
 		return
 	}
 
 	var playlists []QueriedPlaylist
 	for rows.Next() {
 		var playlist QueriedPlaylist
-		err = rows.Scan(&playlist.Id, &playlist.Name, &playlist.OwnerUsername, &playlist.CreatedTimestamp, &playlist.ItemCount)
+		var totalLength int
+		err = rows.Scan(&playlist.Id, &playlist.Name, &playlist.OwnerUsername, &playlist.CreatedTimestamp, &playlist.ItemCount, &totalLength)
 		if err != nil {
-			fail("", err)
+			errs.PrivateError(c, err)
+			return
 		}
+
+		playlist.TotalLength = time.Duration(totalLength) * time.Second
 		playlists = append(playlists, playlist)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
@@ -182,143 +289,107 @@ func search(c *gin.Context) {
 	args["Results"] = playlists
 	args["Page"] = 1 + offset/limit
 
-	SSR(playlistQueryResult, c, "content", args)
+	html.Render(playlistQueryResult, c, "content", args)
 }
 
 func newPlaylist(c *gin.Context) {
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	name := c.Request.Header.Get("Hx-Prompt")
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		Toast(c, ToastError, "Unable to create new playlist", msg)
-	}
-
-	if !loggedIn {
-		fail("You must be logged in to create a new playlist.", nil)
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
 		return
 	}
 
-	if len(name) == 0 {
-		fail("Playlist name could not be empty.", nil)
-		return
-	}
-
-	if len(name) > 100 {
-		fail("Playlist name could not have more than 100 characters", nil)
-	}
-
-	tx, err := db.DB.Begin()
+	name, err := HxPrompt(c)
 	if err != nil {
-		fail("", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidParam)
+		return
+	}
+
+	if playlistNameRegex.MatchString(name) {
+		errs.PrivateError(c, fmt.Errorf("Invalid playlist name: %s", name))
+		errs.PublicError(c, invalidParam)
+		return
+	}
+
+	username := auth.GetUsername(c)
+
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	var id uuid.UUID
-	err = tx.QueryRow("INSERT INTO playlists (name, owner_username) VALUES ($1, $2) RETURNING id", name, username).Scan(&id)
-	if err != nil {
-		fail("", err)
+	var id int
+	if tx.QueryRow("INSERT INTO playlists (name, owner_username) VALUES ($1, $2) RETURNING id", name, username).Scan(nil, &id) {
 		return
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
-	Redirect(c, "/watch/"+id.String())
+	HxRedirect(c, "/watch/"+strconv.Itoa(id))
 }
 
-func renamePlaylist(c *gin.Context) bool {
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	name := c.Request.Header.Get("Hx-Prompt")
-	id := c.Param("id")
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist rename error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		Toast(c, ToastError, "Unable to rename playlist", msg)
+func renamePlaylist(c *gin.Context) (string, bool) {
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
+		return "", false
 	}
 
-	if !loggedIn {
-		fail("You must be logged in to do this", nil)
-		return false
-	}
+	username := auth.GetUsername(c)
+	id := stores.GetPlaylistId(c)
 
-	if len(name) == 0 {
-		fail("Playlist name must not be empty", nil)
-		return false
-	}
-
-	tx, err := db.DB.Begin()
+	name, err := HxPrompt(c)
 	if err != nil {
-		fail("", err)
-		return false
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidParam)
+		return "", false
+	}
+
+	if playlistNameRegex.MatchString(name) {
+		errs.PrivateError(c, fmt.Errorf("Invalid playlist name: %s", name))
+		errs.PublicError(c, invalidParam)
+		return "", false
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return "", false
 	}
 	defer tx.Rollback()
 
-	row, err := tx.Exec("UPDATE playlists SET name = $1 WHERE id = $2 AND owner_username = $3", name, id, username)
-	if err != nil {
-		fail("", err)
-		return false
+	if tx.Exec(nil, "UPDATE playlists SET name = $1 WHERE id = $2 AND owner_username = $3", name, id, username) {
+		return "", false
 	}
 
-	if affected, err := row.RowsAffected(); affected == 0 || err != nil {
-		fail("", err)
-		return false
+	if tx.Commit() {
+		return "", false
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
-		return false
-	}
-
-	return true
+	return name, true
 }
 
 func deletePlaylist(c *gin.Context) bool {
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	id := c.Param("id")
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist delete error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		Toast(c, ToastError, "Unable to rename playlist", msg)
-	}
-
-	if !loggedIn {
-		fail("You must be logged in to delete this playlist.", nil)
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
 		return false
 	}
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	username := auth.GetUsername(c)
+	id := stores.GetPlaylistId(c)
+
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return false
 	}
 	defer tx.Rollback()
 
-	row, err := tx.Exec("DELETE FROM playlists WHERE id = $1 AND owner_username = $2", id, username)
-	if err != nil {
-		fail("", err)
+	if tx.Exec(nil, "DELETE FROM playlists WHERE id = $1 AND owner_username = $2", id, username) {
 		return false
 	}
 
-	if affected, err := row.RowsAffected(); affected == 0 || err != nil {
-		fail("", err)
-		return false
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return false
 	}
 
@@ -326,405 +397,153 @@ func deletePlaylist(c *gin.Context) bool {
 }
 
 func playlistWatch(c *gin.Context) {
-	id := c.Param("id")
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		SSR(playlistWatchInvalidTmpl, c, "layout", defaultErrorMsg(msg))
-	}
+	id := stores.GetPlaylistId(c)
 
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	var dummy int
-	err = tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&dummy)
-	if err != nil {
-		fail("", err)
+	var name string
+	var hasRow bool
+	if tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&hasRow, &name) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
+	if !hasRow {
+		html.Render(playlistWatchInvalidTmpl, c, "layout", gin.H{})
 		return
 	}
 
-	SSR(playlistWatchTmpl, c, "layout", gin.H{
-		"Id": id,
+	if tx.Commit() {
+		return
+	}
+
+	html.Render(playlistWatchTmpl, c, "layout", gin.H{
+		"Id":    id,
+		"Title": name,
 	})
 }
 
-func parseNullUUID(str string) (uuid.NullUUID, error) {
-	if str == "" || str == "null" {
-		return uuid.NullUUID{Valid: false}, nil
-	}
-
-	id, err := uuid.Parse(str)
-	return uuid.NullUUID{Valid: err == nil, UUID: id}, err
-}
-
-func nullUUIDToString(u uuid.NullUUID) string {
-	if u.Valid {
-		return ""
-	}
-
-	return u.UUID.String()
-}
-
-func queueLimit(_ *gin.Context) int {
-	return 10
-}
-
-func getPivot(c *gin.Context, secret string) (uuid.UUID, int, error) {
-	pivot, err := uuid.Parse(c.Query("pivot"))
-	if err != nil {
-		return uuid.UUID{}, 0, err
-	}
-
-	pivotIndex, err := strconv.Atoi(c.Query("pivot-index"))
-	if err != nil {
-		return uuid.UUID{}, 0, err
-	}
-
-	if c.Query("state-hash") != hashSecret(secret) || c.Query("pivot-pos-hash") != positionalHash(secret, pivot, pivotIndex) {
-		return uuid.UUID{}, 0, errors.New("Hash mismatch")
-	} else {
-		return pivot, pivotIndex, nil
-	}
-}
-
-func queryItem(tx *sql.Tx, id ds.NonNilId, index int, secret string) (QueuePlaylistItem, error) {
-	item := QueuePlaylistItem{Id: id, Index: index}
-	err := tx.QueryRow("SELECT i.prev, i.next, m.title, m.artist FROM playlist_items i INNER JOIN medias m ON i.media = m.id WHERE i.id = $1", id).Scan(&item.Prev, &item.Next, &item.Title, &item.Artist)
-	item.PositionalHash = positionalHash(secret, id, index)
-	return item, err
-}
-
-func mustJson(args gin.H) string {
-	j, err := json.Marshal(args)
-	if err != nil {
-		panic(err)
-	}
-
-	return string(j)
-}
-
-func firstPagePivotArgs() string {
-	return mustJson(gin.H{"pivot": "firstpage"})
-}
-
-func pivotArgs(pivot ds.NonNilId, index int, secret string) string {
-	return mustJson(gin.H{
-		"pivot":          pivot.String(),
-		"pivot-index":    index,
-		"pivot-pos-hash": positionalHash(secret, pivot, index),
-	})
-}
-
-func playlistWatchQueueFirstPage(c *gin.Context) {
-	id := c.Param("id")
-	limit := queueLimit(c)
-
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist last page fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		c.Header("Hx-Reswap", "none")
-		// this is an infinite loop
-		// playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to fetch playlist queue", msg)
-	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+func playlistRenderQueue(c *gin.Context, playlist int, page int) {
+	slog.Warn("Rendering playlist queue", "playlist", playlist, "page", page)
+	limit := 10
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	var items []QueuePlaylistItem
-	var nextId ds.Id
-	var stateSecret string
-	var currentIndex int
-	err = tx.QueryRow("SELECT first, state_secret, current_idx FROM playlists WHERE id = $1", id).Scan(&nextId, &stateSecret, &currentIndex)
-	if err == sql.ErrNoRows {
-		fail("Playlist not found. Please refresh the page.", err)
-		return
-	} else if err != nil {
-		fail("", err)
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, playlist)
+	if hasErr {
 		return
 	}
 
-	i := 0
-	for ; nextId.Valid && i < limit; i++ {
-		item, err := queryItem(tx, nextId.UUID, i, stateSecret)
-		if err != nil {
-			fail("", err)
-			return
-		}
-
-		items = append(items, item)
-		nextId = item.Next
-	}
-
-	slices.Reverse(items)
-
-	if err := tx.Commit(); err != nil {
-		fail("", err)
+	var current sql.NullInt32
+	var owner string
+	var hasRow bool
+	if tx.QueryRow("SELECT current, owner_username FROM playlists WHERE id = $1", playlist).Scan(&hasRow, &current, &owner) {
 		return
 	}
 
-	args := gin.H{
-		"Id":         id,
-		"GlobalHash": hashSecret(stateSecret),
-		"Items":      items,
-		"ThisPage":   firstPagePivotArgs(),
-		"CurrentIdx": currentIndex,
-	}
-	if nextId.Valid {
-		args["NextPage"] = pivotArgs(nextId.UUID, i, stateSecret)
-	}
-	SSR(playlistWatchTmpl, c, "queue", args)
-}
-
-func playlistWatchQueueLastPage(c *gin.Context) {
-	id := c.Param("id")
-	limit := queueLimit(c)
-
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist first page fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to fetch playlist queue", msg)
-	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
 		return
 	}
-	defer tx.Rollback()
 
-	var items []QueuePlaylistItem
-	var prevId ds.Id
-	var stateSecret string
 	var itemCount int
-	var currentIndex int
-	err = tx.QueryRow("SELECT last, state_secret, item_count, current_idx FROM playlists WHERE id = $1", id).Scan(&prevId, &stateSecret, &itemCount, &currentIndex)
-	if err == sql.ErrNoRows {
-		fail("Playlist not found. Please refresh the page.", err)
-		return
-	} else if err != nil {
-		fail("", err)
+	if tx.QueryRow("SELECT COUNT(*) FROM playlist_items WHERE playlist = $1", playlist).Scan(&hasRow, &itemCount) {
 		return
 	}
 
-	limit = itemCount % limit
-
-	i := 0
-	for ; prevId.Valid && i < limit; i++ {
-		item, err := queryItem(tx, prevId.UUID, itemCount-1-i, stateSecret)
-		if err != nil {
-			fail("", err)
-			return
-		}
-
-		items = append(items, item)
-		prevId = item.Prev
+	if page == 0 {
+		// last page
+		page = (itemCount + limit - 1) / limit
+		slog.Warn("page", "p", itemCount)
 	}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
-		return
-	}
-
-	args := gin.H{
-		"Id":         id,
-		"GlobalHash": hashSecret(stateSecret),
-		"Items":      items,
-		"ThisPage":   firstPagePivotArgs(), // if len(items) == 0
-		"CurrentIdx": currentIndex,
-	}
-	if len(items) > 0 {
-		args["ThisPage"] = pivotArgs(items[len(items)-1].Id, items[len(items)-1].Index, stateSecret)
-	}
-	if prevId.Valid {
-		args["PrevPage"] = pivotArgs(prevId.UUID, itemCount-i-1, stateSecret)
-	}
-	SSR(playlistWatchTmpl, c, "queue", args)
-}
-
-func playlistWatchQueueNextPage(c *gin.Context) {
-	if c.Query("pivot") == "firstpage" {
-		playlistWatchQueueFirstPage(c)
-		return
-	}
-
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist next page fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to fetch playlist queue", msg)
-	}
-
-	id := c.Param("id")
-	limit := queueLimit(c)
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
-		return
-	}
-	defer tx.Rollback()
+	offset := (page - 1) * 10
 
 	var items []QueuePlaylistItem
-	var stateSecret string
-	var currentIndex int
-	// TODO: implement state update tracking
-	err = tx.QueryRow("SELECT p.state_secret, p.current_idx FROM playlist_items i INNER JOIN playlists p ON i.playlist = p.id WHERE i.id = $1 AND p.id = $2", c.Query("pivot"), id).Scan(&stateSecret, &currentIndex)
-	if err == sql.ErrNoRows {
-		fail("Playlist not found. Please refresh the page.", err)
-		return
-	} else if err != nil {
-		fail("", err)
+	var rows *sql.Rows
+	if tx.Query(&rows, `
+    SELECT 
+        i.id, 
+        COALESCE(a.alt_title, m.title),
+        COALESCE(a.alt_artist, m.artist),
+        m.url, 
+        m.duration 
+    FROM playlist_items i 
+    JOIN medias m ON m.id = i.media 
+		LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = i.playlist
+    WHERE i.playlist = $1 
+    ORDER BY i.item_order 
+    OFFSET $2 LIMIT $3`, playlist, offset, limit) {
 		return
 	}
 
-	pivot, pivotIndex, err := getPivot(c, stateSecret)
-	if err != nil {
-		fail("", err)
-		return
-	}
-
-	i := 0
-	nextId := ds.Nilable(pivot)
-	for ; i < limit && nextId.Valid; i++ {
-		item, err := queryItem(tx, nextId.UUID, i+pivotIndex, stateSecret)
+	for rows.Next() {
+		var item QueuePlaylistItem
+		var duration time.Duration
+		err := rows.Scan(&item.Id, &item.Title, &item.Artist, &item.URL, &duration)
 		if err != nil {
-			fail("", err)
+			errs.PrivateError(c, err)
 			return
 		}
-
+		item.Duration = time.Duration(duration) * time.Second
+		item.Index = offset
+		offset += 1
 		items = append(items, item)
-		nextId = item.Next
 	}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
+	currentId := 0
+	if current.Valid {
+		currentId = int(current.Int32)
+	}
 	slices.Reverse(items)
-
 	args := gin.H{
-		"Id":         id,
-		"GlobalHash": hashSecret(stateSecret),
-		"Items":      items,
-		"ThisPage":   pivotArgs(items[len(items)-1].Id, items[len(items)-1].Index, stateSecret),
-		"CurrentIdx": currentIndex,
+		"Id":        playlist,
+		"Items":     items,
+		"ThisPage":  page,
+		"Current":   currentId,
+		"Owner":     owner,
+		"IsManager": isManager,
 	}
-	if items[len(items)-1].Prev.Valid {
-		args["PrevPage"] = pivotArgs(items[len(items)-1].Prev.UUID, items[len(items)-1].Index-1, stateSecret)
+
+	if page > 1 {
+		args["PrevPage"] = page - 1
 	}
-	if nextId.Valid {
-		args["NextPage"] = pivotArgs(nextId.UUID, i+pivotIndex, stateSecret)
+	if itemCount > page*limit {
+		args["NextPage"] = page + 1
 	}
-	SSR(playlistWatchTmpl, c, "queue", args)
+
+	html.Render(playlistWatchTmpl, c, "queue", args)
 }
 
-func playlistWatchQueuePrevPage(c *gin.Context) {
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist previous page fetch error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to fetch playlist queue", msg)
-	}
+func playlistWatchQueue(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
 
-	id := c.Param("id")
-	limit := queueLimit(c)
-
-	tx, err := db.DB.Begin()
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if err != nil {
-		fail("", err)
-		return
-	}
-	defer tx.Rollback()
-
-	var items []QueuePlaylistItem
-	var stateSecret string
-	var currentIndex int
-	err = tx.QueryRow("SELECT p.state_secret, p.current_idx FROM playlist_items i INNER JOIN playlists p ON i.playlist = p.id WHERE i.id = $1 AND p.id = $2", c.Query("pivot"), id).Scan(&stateSecret, &currentIndex)
-	if err == sql.ErrNoRows {
-		fail("Playlist not found. Please refresh the page.", err)
-		return
-	} else if err != nil {
-		fail("", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidParam)
 		return
 	}
 
-	pivot, pivotIndex, err := getPivot(c, stateSecret)
-	if err != nil {
-		fail("", err)
-		return
-	}
-
-	i := 0
-	prevId := ds.Nilable(pivot)
-	for ; i < limit && prevId.Valid; i++ {
-		item, err := queryItem(tx, prevId.UUID, pivotIndex-i, stateSecret)
-		if err != nil {
-			fail("", err)
-			return
-		}
-
-		items = append(items, item)
-		prevId = item.Prev
-	}
-
-	if err := tx.Commit(); err != nil {
-		fail("", err)
-		return
-	}
-
-	args := gin.H{
-		"Id":         id,
-		"GlobalHash": hashSecret(stateSecret),
-		"Items":      items,
-		"ThisPage":   pivotArgs(items[len(items)-1].Id, items[len(items)-1].Index, stateSecret),
-		"CurrentIdx": currentIndex,
-	}
-	if items[0].Next.Valid {
-		args["NextPage"] = pivotArgs(items[0].Next.UUID, items[0].Index+1, stateSecret)
-	}
-	if prevId.Valid {
-		args["PrevPage"] = pivotArgs(prevId.UUID, pivotIndex-i, stateSecret)
-	}
-	SSR(playlistWatchTmpl, c, "queue", args)
+	playlistRenderQueue(c, id, page)
 }
 
 func playlistWatchController(c *gin.Context) {
-	id := c.Param("id")
+	id := stores.GetPlaylistId(c)
 
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist fetch error", "msg", msg, "err", err)
-		SSR(playlistWatchInvalidTmpl, c, "layout", defaultErrorMsg(msg))
-	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
@@ -732,70 +551,128 @@ func playlistWatchController(c *gin.Context) {
 	var name string
 	var owner string
 	var createdTimestamp time.Time
-	var stateSecret string
-	var first uuid.NullUUID
-	var last uuid.NullUUID
-	err = tx.QueryRow("SELECT name, owner_username, created_timestamp, state_secret, first, last FROM playlists WHERE id = $1", id).Scan(&name, &owner, &createdTimestamp, &stateSecret, &first, &last)
-	if err != nil {
-		fail("", err)
+	var current sql.NullInt32
+	var hasRow bool
+	if tx.QueryRow("SELECT name, owner_username, created_timestamp, current FROM playlists WHERE id = $1", id).Scan(&hasRow, &name, &owner, &createdTimestamp, &current) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
 		return
 	}
 
-	globalHash := hashSecret(stateSecret)
-
-	SSR(playlistWatchTmpl, c, "controller", gin.H{
+	args := gin.H{
 		"Id":               id,
 		"Name":             name,
 		"Owner":            owner,
 		"CreatedTimestamp": createdTimestamp,
-		"GlobalHash":       globalHash,
-		"Media": gin.H{
-			"Id":             "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
-			"ItemId":         "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
-			"PrevId":         "884ae4e9-cea4-4c49-a19d-5e5cd7b3820f",
-			"NextId":         "none",
-			"Type":           "yt",
-			"URL":            "https://youtu.be/FrcR9qvjwmo",
-			"Title":          "Hello, World!",
-			"Artist":         "Kizuna Ai",
-			"OriginalTitle":  "hello world",
-			"OriginalArtist": "Kizuna Ai",
-			"Duration":       time.Duration(100) * time.Second,
-		},
-	})
+		"IsManager":        isManager,
+	}
+
+	if current.Valid {
+		var mediaId int
+		var title string
+		var artist string
+		var altTitle string
+		var altArtist string
+		var duration int
+		var url string
+		var mediaAddTimestamp time.Time
+		var itemAddTimestamp time.Time
+		if tx.QueryRow(`
+			SELECT
+				m.id,
+				m.title,
+				m.artist,
+				COALESCE(a.alt_title, m.title),
+				COALESCE(a.alt_artist, m.artist),
+				m.duration,
+				m.url,
+				m.add_timestamp,
+				i.add_timestamp
+			FROM playlist_items i
+			JOIN medias m ON i.media = m.id
+			LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = i.playlist
+			WHERE i.id = $1`, current).Scan(nil, &mediaId, &title, &artist, &altTitle, &altArtist, &duration, &url, &mediaAddTimestamp, &itemAddTimestamp) {
+			return
+		}
+		args["Media"] = gin.H{
+			"Id":                mediaId,
+			"ItemId":            current.Int32,
+			"Type":              "yt",
+			"URL":               url,
+			"Title":             altTitle,
+			"Artist":            altArtist,
+			"OriginalTitle":     title,
+			"OriginalArtist":    artist,
+			"Duration":          time.Duration(duration) * time.Second,
+			"MediaAddTimestamp": mediaAddTimestamp,
+			"ItemAddTimestamp":  itemAddTimestamp,
+		}
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	html.Render(playlistWatchTmpl, c, "controller", args)
 }
 
-func updatePlaylist(tx *sql.Tx, id string) (string, error) {
-	secret := uuid.New().String()
-	_, err := tx.Exec("UPDATE playlists SET state_secret = $1 WHERE id = $2", secret, id)
-	return secret, err
+func localRebalance(tx *sql.Tx, playlist int, startOrder int, endOrder int, numInsert int) error {
+	alpha := 1.5
+	beta := 2.5
+
+	var count int
+	err := tx.QueryRow("SELECT COUNT(*) FROM playlist_items WHERE playlist = $1 AND (item_order BETWEEN $2 AND $3)", playlist, startOrder, endOrder).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	numOrderValues := endOrder - startOrder + 1
+	density := float64(numOrderValues) / float64(count+numInsert)
+	if density < beta {
+		startOrder = int(float64(startOrder) - alpha*float64(numOrderValues))
+		endOrder = int(float64(endOrder) + beta*float64(numOrderValues))
+		return localRebalance(tx, playlist, startOrder, endOrder, numInsert)
+	}
+
+	_, err = tx.Exec(
+		`
+		WITH RankedRows AS (
+			SELECT
+				item_order,
+				ROW_NUMBER() OVER (ORDER BY item_order) AS i
+			FROM playlist_items
+			WHERE playlist = $1 AND item_order BETWEEN $2 AND $3
+		), UpdatedRows AS (
+			SELECT
+				item_order,
+				($2 + ($3 - $2) * (i - 1) / $4) AS new_order
+			FROM RankedRows
+		)
+		UPDATE playlist_items
+		SET item_order = UpdatedRows.new_order
+		FROM UpdatedRows
+		WHERE playlist_items.item_order = UpdatedRows.item_order AND playlist = $1
+		`, playlist, startOrder, endOrder, count)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func playlistAdd(c *gin.Context) {
-	id := c.Param("id")
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	pos := c.PostForm("add-position")
-	title := c.PostForm("title")
-	artist := c.PostForm("artist")
-	stateHash := c.PostForm("state-hash")
-
+func playlistAddBackground(playlist int, socketId string, canonInfo *media.MediaCanonicalizeInfo, pos PlaylistAddPosition) {
+	ctx := context.Background()
 	fail := func(msg template.HTML, err error) {
 		slog.Warn("Playlist item add error", "msg", msg, "err", err)
 		if len(msg) == 0 {
 			msg = "Internal server error. Please try again later."
 		}
-		playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to add media to playlist", msg)
-	}
 
-	if !loggedIn {
-		fail("You must be logged in to add media to this playlist.", nil)
-		return
+		WebSocketToast(socketId, ToastError, "Unable to add media to playlist", msg)
 	}
 
 	tx, err := db.DB.Begin()
@@ -805,142 +682,885 @@ func playlistAdd(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRow("SELECT state_secret FROM playlists WHERE id = $1 AND owner_username = $2", id, username)
-	var secret string
-	err = row.Scan(&secret)
-	if err == sql.ErrNoRows {
-		fail("You must be a manager of this playlist to modify its content.", err)
-		return
-	} else if err != nil {
-		fail("", err)
-		return
-	}
-
-	checksum := hashSecret(secret)
-	if stateHash != checksum {
-		fail("Invalid playlist state hash", err)
-		return
-	}
-
-	secret, err = updatePlaylist(tx, id)
+	var current sql.NullInt32
+	err = tx.QueryRow("SELECT current FROM playlists WHERE id = $1", playlist).Scan(&current)
 	if err != nil {
 		fail("", err)
 		return
 	}
 
-	if pos != string(ds.AddToStart) && pos != string(ds.AddToEnd) && pos != string(ds.QueueNext) {
-		fail("Invalid add position", nil)
+	var title string
+	var artist string
+	var mediaIds []int
+
+	addMedias := func(entries []media.MediaListEntry) error {
+		for _, entry := range entries {
+			var id int
+			err := tx.QueryRow("SELECT id FROM medias WHERE url = $1", entry.CanonInfo.Url).Scan(&id)
+			if err != nil && err != sql.ErrNoRows {
+				return err
+			}
+
+			if err == sql.ErrNoRows {
+				slog.Warn(string(entry.CanonInfo.Kind))
+				err = tx.QueryRow(
+					"INSERT INTO medias (media_type, title, artist, duration, url, aspect_ratio) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+					string(entry.CanonInfo.Kind), entry.ResolveInfo.Title, entry.ResolveInfo.Artist, int(entry.ResolveInfo.Duration.Seconds()), entry.CanonInfo.Url, entry.ResolveInfo.AspectRatio,
+				).Scan(&id)
+				if err != nil {
+					return err
+				}
+			}
+
+			mediaIds = append(mediaIds, id)
+		}
+
+		return nil
+	}
+
+	if canonInfo.Multiple {
+		mediaList, err := media.ResolveMediaList(ctx, canonInfo)
+		if err != nil {
+			fail("Unable to resolve media list", err)
+			return
+		}
+
+		title = mediaList.Title
+		artist = mediaList.Artist
+
+		err = addMedias(mediaList.Medias)
+		if err != nil {
+			fail("Unable to add media to DB", err)
+			return
+		}
+	} else {
+		var id int
+		err = tx.QueryRow("SELECT id, title, artist FROM medias WHERE url = $1", canonInfo.Url).Scan(&id, &title, &artist)
+		if err != nil && err != sql.ErrNoRows {
+			fail("", err)
+			return
+		}
+
+		if err == sql.ErrNoRows {
+			resolvedMediaInfo, err := media.ResolveMedia(ctx, canonInfo)
+			if err != nil {
+				fail("Unable to resolve media", err)
+				return
+			}
+
+			title = resolvedMediaInfo.Title
+			artist = resolvedMediaInfo.Artist
+
+			err = addMedias([]media.MediaListEntry{{CanonInfo: canonInfo, ResolveInfo: resolvedMediaInfo}})
+			if err != nil {
+				fail("Unable to add media to DB", err)
+				return
+			}
+		} else {
+			mediaIds = append(mediaIds, id)
+		}
+	}
+	var itemCount int
+	err = tx.QueryRow("SELECT COUNT(*) FROM playlist_items WHERE playlist = $1", playlist).Scan(&itemCount)
+
+	if !current.Valid && pos == QueueNext {
+		pos = AddToEnd
+	}
+
+	firstOrder := 0
+	orderIncrement := gap
+	if pos != QueueNext {
+		if itemCount > 0 {
+			var minOrder int
+			var maxOrder int
+			err = tx.QueryRow("SELECT MIN(item_order), MAX(item_order) FROM playlist_items WHERE playlist = $1", playlist).Scan(&minOrder, &maxOrder)
+			if err != sql.ErrNoRows && err != nil {
+				fail("", err)
+				return
+			}
+
+			if pos == AddToStart {
+				firstOrder = minOrder - orderIncrement*len(mediaIds)
+			} else {
+				firstOrder = maxOrder + orderIncrement
+			}
+		}
+	} else {
+		var currentOrder int
+		err = tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", current).Scan(&currentOrder)
+		if err != nil {
+			fail("", err)
+			return
+		}
+
+		var nextOrder int
+		err = tx.QueryRow("SELECT item_order FROM playlist_items WHERE playlist = $1 AND item_order > $2 ORDER BY item_order LIMIT 1", playlist, currentOrder).Scan(&nextOrder)
+		if err == sql.ErrNoRows {
+			firstOrder = currentOrder + orderIncrement
+		} else {
+			if err != nil {
+				fail("", err)
+				return
+			}
+
+			if nextOrder <= currentOrder+len(mediaIds) {
+				err = localRebalance(tx, playlist, currentOrder, nextOrder, len(mediaIds))
+				if err != nil {
+					fail("", err)
+					return
+				}
+
+				err = tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", current).Scan(&currentOrder)
+				if err != nil {
+					fail("", err)
+					return
+				}
+
+				err = tx.QueryRow("SELECT item_order FROM playlist_items WHERE playlist = $1 AND item_order > $2 ORDER BY item_order LIMIT 1", playlist, currentOrder).Scan(&nextOrder)
+				if err != nil {
+					fail("", err)
+					return
+				}
+			}
+
+			orderIncrement = (nextOrder - currentOrder) / (len(mediaIds) + 1)
+			firstOrder = currentOrder + orderIncrement
+			slog.Warn("haal", "f", firstOrder, "s", currentOrder, "n", nextOrder)
+			if orderIncrement == 0 || firstOrder+orderIncrement*(len(mediaIds)-1) == nextOrder {
+				panic("playlist too full")
+			}
+		}
+	}
+
+	for i, mediaId := range mediaIds {
+		var itemId int
+		order := firstOrder + i*orderIncrement
+		err = tx.QueryRow("INSERT INTO playlist_items (media, playlist, item_order) VALUES ($1, $2, $3) RETURNING id", mediaId, playlist, order).Scan(&itemId)
+		if err != nil {
+			fail("", err)
+			return
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		fail("", err)
 		return
 	}
 
-	playlist := ds.CreatePlaylistWrapper(id, tx)
-	var mediaId uuid.UUID
-	err = tx.QueryRow("INSERT INTO medias (title, artist) VALUES ($1, $2) RETURNING id", title, artist).Scan(&mediaId)
+	var msg string
+	if canonInfo.Multiple {
+		msg = fmt.Sprintf("Media %s - %s added to playlist", title, artist)
+	} else {
+		msg = fmt.Sprintf("Media list %s - %s added to playlist", title, artist)
+	}
+
+	WebSocketPlaylistEvent(playlist, PlaylistChanged)
+	WebSocketToast(socketId, ToastInfo, "Media added successfully", template.HTML(template.HTMLEscapeString(msg)))
+}
+
+func playlistAdd(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	pos := c.PostForm("add-position")
+	url := c.PostForm("url")
+	wsId := c.PostForm("websocket-id")
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
+		return
+	}
+
+	if pos != string(AddToStart) && pos != string(AddToEnd) && pos != string(QueueNext) {
+		errs.PrivateError(c, fmt.Errorf("Invalid add position: %s", pos))
+		errs.PublicError(c, invalidParam)
+		return
+	}
+
+	if wsId == "" {
+		errs.PrivateError(c, fmt.Errorf("Invalid websocket id: %s", wsId))
+		errs.PublicError(c, invalidParam)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var dummy int
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&hasRow, &dummy) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
+		return
+	}
+
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
+		return
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
+		return
+	}
+
+	canonInfo, err := media.CanonicalizeMedia(url)
 	if err != nil {
-		fail("", err)
+		errs.PublicError(c, fmt.Errorf("Invalid media URL: %w", err))
 		return
 	}
 
-	var itemId uuid.UUID
-	err = tx.QueryRow("INSERT INTO playlist_items (media, playlist) VALUES ($1, $2) RETURNING id", mediaId, id).Scan(&itemId)
-	if err != nil {
-		fail("", err)
+	if tx.Commit() {
 		return
 	}
 
-	err = ds.AddItem(playlist, itemId, ds.AddPosition(pos))
-	if err != nil {
-		fail("", err)
+	go playlistAddBackground(id, wsId, canonInfo, PlaylistAddPosition(pos))
+	Toast(c, ToastInfo, "Adding new media", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Adding media with URL %s to playlist...", url))))
+}
+
+func sendMediaChanged(id int, itemId int) {
+	var payload MediaChangedPayload
+	err := db.DB.QueryRow("SELECT m.media_type, m.url, m.aspect_ratio FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1", itemId).Scan(&payload.Type, &payload.Url, &payload.AspectRatio)
+	if err != nil && err != sql.ErrNoRows {
+		slog.Warn("Unable to query current media", "pid", id, "iid", itemId, "err", err)
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
-		return
+	if err == nil {
+		WebSocketMediaChange(id, "", payload)
 	}
-
-	// injection vulnerability
-	Toast(c, ToastInfo, "Media added successfully", template.HTML(fmt.Sprintf("Added %s - %s to playlist %s", artist, title, "")))
-	playlistWatchQueueFirstPage(c)
 }
 
 func playlistGoto(c *gin.Context) {
-	id := c.Param("id")
+	id := stores.GetPlaylistId(c)
 
-	fail := func(msg template.HTML, err error) {
-		slog.Warn("Playlist goto error", "msg", msg, "err", err)
-		if len(msg) == 0 {
-			msg = "Internal server error. Please try again later."
-		}
-		playlistWatchQueueFirstPage(c)
-		Toast(c, ToastError, "Unable to change current item in playlist", msg)
-	}
-
-	username, loggedIn := middlewares.GetAuthUsername(c)
-	if !loggedIn {
-		fail("You must be logged in to set current media of this playlist.", nil)
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
 		return
 	}
 
-	itemId, err := uuid.Parse(c.Param("item-id"))
+	itemId, err := strconv.Atoi(c.Param("item-id"))
 	if err != nil {
-		fail("Invalid item UUID", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidParam)
 		return
 	}
 
-	index, err := strconv.Atoi(c.PostForm("index"))
-	if err != nil {
-		fail("Invalid item index", err)
-		return
-	}
-
-	tx, err := db.DB.Begin()
-	if err != nil {
-		fail("", err)
+	tx := db.BeginTx(c)
+	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	var stateSecret string
-	err = tx.QueryRow("SELECT state_secret FROM playlists WHERE id = $1 AND owner_username = $2", id, username).Scan(&stateSecret)
-	if err == sql.ErrNoRows {
-		fail("You must be a manager of this playlist to modify its content.", err)
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
 		return
-	} else if err != nil {
-		fail("", err)
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
 		return
 	}
 
 	var dummy int
-	err = tx.QueryRow("SELECT 1 FROM playlist_items WHERE id = $1 AND playlist = $2", itemId, id).Scan(&dummy)
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM playlist_items WHERE id = $1 AND playlist = $2", itemId, id).Scan(&hasRow, &dummy) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidParam)
+		return
+	}
+
+	if tx.Exec(nil, "UPDATE playlists SET current = $1 WHERE id = $2", itemId, id) {
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	go sendMediaChanged(id, itemId)
+}
+
+func playlistDelete(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var dummy int
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&hasRow, &dummy) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
+		return
+	}
+
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
+		return
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
+		return
+	}
+
+	items, err := getCheckedItems(c)
 	if err != nil {
-		fail("Item does not belong to playlist", err)
+		errs.PrivateError(c, err)
+		errs.PublicError(c, invalidParam)
 		return
 	}
 
-	if c.PostForm("state-hash") != hashSecret(stateSecret) {
-		fail("State hash mismatch", nil)
+	for _, item := range items {
+		if tx.Exec(nil, "DELETE FROM playlist_items WHERE id = $1 AND playlist = $2", item, id) {
+			return
+		}
+	}
+
+	if tx.Commit() {
 		return
 	}
 
-	if c.PostForm("playlist-item-hash-"+itemId.String()) != positionalHash(stateSecret, itemId, index) {
-		fail("Positional hash mismatch", nil)
+	WebSocketPlaylistEvent(id, PlaylistChanged)
+	Toast(c, ToastInfo, "Playlist items removed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d item(s) are removed from the playlist", len(items)))))
+}
+
+func playlistSubmitMetadata(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
 		return
 	}
 
-	playlist := ds.CreatePlaylistWrapper(id, tx)
-	err = playlist.SetCurrent(ds.Nilable(itemId), index)
+	title := c.PostForm("media-title")
+	artist := c.PostForm("media-artist")
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
+		return
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
+		return
+	}
+
+	var media int
+	var hasRow bool
+	if tx.QueryRow("SELECT i.media FROM playlists p JOIN playlist_items i ON p.current = i.id WHERE p.id = $1", id).Scan(&hasRow, &media) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, noCurrentMediaError)
+		return
+	}
+
+	if tx.Exec(nil, "INSERT INTO alt_metadata (playlist, media, alt_title, alt_artist) VALUES ($1, $2, $3, $4) ON CONFLICT (playlist, media) DO UPDATE SET alt_title = excluded.alt_title, alt_artist = excluded.alt_artist", id, media, title, artist) {
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	playlistWatchController(c)
+	WebSocketPlaylistEvent(id, PlaylistChanged)
+	Toast(c, ToastInfo, "Metadata updated", "Metadata of current playlist item was updated successfully")
+}
+
+func playlistNextRequest(c *gin.Context) {
+	quiet := c.PostForm("quiet") == "true"
+	id := stores.GetPlaylistId(c)
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
+		return
+	}
+
+	username := auth.GetUsername(c)
+	err := NextRequest(id, username)
 	if err != nil {
-		fail("", err)
+		errs.PublicError(c, err)
 		return
 	}
 
-	stateSecret, err = updatePlaylist(tx, id)
+	if !quiet {
+		Toast(c, ToastInfo, "Next request sent", "Successfully sent next request")
+	}
+}
 
-	if err := tx.Commit(); err != nil {
-		fail("", err)
+func PlaylistUpdateCurrent(playlist int, sign, sortOrder string) error {
+	tx, err := db.DB.Begin()
+	if err != nil {
+		return db.GenericError
+	}
+	defer tx.Rollback()
+
+	var currentOrder int
+
+	var current sql.NullInt32
+	err = tx.QueryRow("SELECT current FROM playlists WHERE id = $1", playlist).Scan(&current)
+	if err == sql.ErrNoRows {
+		return invalidPlaylistError
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if !current.Valid {
+		return noCurrentMediaError
+	}
+
+	err = tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", current).Scan(&currentOrder)
+	if err != nil {
+		return db.GenericError
+	}
+
+	var next int
+	err = tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 AND item_order "+sign+" $2 ORDER BY item_order "+sortOrder, playlist, currentOrder).Scan(&next)
+	if err == sql.ErrNoRows {
+		err = tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 ORDER BY item_order "+sortOrder, playlist).Scan(&next)
+	}
+
+	if err != nil {
+		return db.GenericError
+	}
+
+	var payload MediaChangedPayload
+	err = tx.QueryRow(`SELECT m.media_type, m.aspect_ratio, m.url FROM playlist_items i JOIN medias m ON i.media = m.id WHERE i.id = $1`, next).Scan(&payload.Type, &payload.AspectRatio, &payload.Url)
+	if err != nil {
+		return db.GenericError
+	}
+
+	_, err = tx.Exec("UPDATE playlists SET current = $1 WHERE id = $2", next, playlist)
+	if err != nil {
+		return db.GenericError
+	}
+
+	if err = tx.Commit(); err != nil {
+		return db.GenericError
+	}
+
+	WebSocketMediaChange(playlist, "", payload)
+
+	return nil
+}
+
+func playlistPrev(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
 		return
 	}
 
-	playlistWatchQueueFirstPage(c)
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
+		return
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	err := PlaylistUpdateCurrent(id, "<", "DESC")
+	if err != nil {
+		errs.PublicError(c, err)
+		return
+	}
+
+	noswap(c)
+}
+
+func playlistNext(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	if !auth.IsLoggedIn(c) {
+		errs.PublicError(c, unauthorizedError)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	username := auth.GetUsername(c)
+	isManager, hasErr := isManager(tx, username, id)
+	if hasErr {
+		return
+	}
+
+	if !isManager {
+		errs.PublicError(c, missingPermissionError)
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	err := PlaylistUpdateCurrent(id, ">", "ASC")
+	if err != nil {
+		errs.PublicError(c, err)
+		return
+	}
+
+	noswap(c)
+}
+
+func playlistManagers(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var owner string
+	var hasRow bool
+	if tx.QueryRow("SELECT owner_username FROM playlists WHERE id = $1", id).Scan(&hasRow, &owner) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
+		return
+	}
+
+	var rows *sql.Rows
+	if tx.Query(&rows, "SELECT username FROM playlist_manage WHERE playlist = $1", id) {
+		return
+	}
+
+	var managers []string
+	for rows.Next() {
+		var manager string
+		err := rows.Scan(&manager)
+		if err != nil {
+			db.DatabaseError(c, err)
+		}
+		managers = append(managers, manager)
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	html.Render(playlistWatchTmpl, c, "managers", gin.H{
+		"Id":       id,
+		"Owner":    owner,
+		"Managers": managers,
+	})
+}
+
+func playlistManagerAdd(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	username, err := HxPrompt(c)
+	if err != nil {
+		errs.PublicError(c, err)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var dummy int
+	var hasRow bool
+	if tx.QueryRow("SELECT 1 FROM users WHERE username = $1", username).Scan(&hasRow, &dummy) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, fmt.Errorf("User '%s' not found", username))
+		return
+	}
+
+	if tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", id).Scan(&hasRow, &dummy) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
+		return
+	}
+
+	if tx.Exec(nil, "INSERT INTO playlist_manage (playlist, username) VALUES ($1, $2)", id, username) {
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	noswap(c)
+	WebSocketPlaylistEvent(id, ManagersChanged)
+	Toast(c, ToastInfo, "New manager successfully added", template.HTML(template.HTMLEscapeString(fmt.Sprintf("User '%s' is now a manager of the playlist", username))))
+}
+
+func playlistManagerDelete(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var numAffected int
+	for manager, value := range c.Request.URL.Query() {
+		if !slices.Contains(value, "on") {
+			continue
+		}
+
+		var res sql.Result
+		if tx.Exec(&res, "DELETE FROM playlist_manage WHERE playlist = $1 AND username = $2", id, manager) {
+			return
+		}
+
+		affected, err := res.RowsAffected()
+		if err != nil {
+			db.DatabaseError(c, err)
+			return
+		}
+
+		numAffected += int(affected)
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	if numAffected > 0 {
+		WebSocketPlaylistEvent(id, ManagersChanged)
+	}
+
+	Toast(c, ToastInfo, "Managers successfully removed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d manager(s) are removed from playlist", numAffected))))
+}
+
+func playlistWatchQueueCurrent(c *gin.Context) {
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	id := stores.GetPlaylistId(c)
+
+	var current sql.NullInt32
+	var hasRow bool
+	if tx.QueryRow("SELECT current FROM playlists WHERE id = $1", id).Scan(&hasRow, &current) {
+		return
+	}
+
+	if !hasRow {
+		errs.PublicError(c, invalidPlaylistError)
+		return
+	}
+
+	if !current.Valid {
+		errs.PublicError(c, noCurrentMediaError)
+		return
+	}
+
+	var index int
+	if tx.QueryRow("SELECT COALESCE(COUNT(*), 0) FROM playlist_items WHERE item_order < (SELECT item_order FROM playlist_items WHERE id = $1 AND playlist = $2) AND playlist = $2", current, id).Scan(&hasRow, &index) {
+		return
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	limit := 10
+	playlistRenderQueue(c, id, index/limit+1)
+}
+
+type MoveItem struct {
+	id    int
+	order int
+}
+
+func playlistMoveUp(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	items, err := getCheckedItems(c)
+	if err != nil {
+		errs.PublicError(c, err)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var moveItems []MoveItem
+	for _, itemId := range items {
+		var item MoveItem
+		item.id = itemId
+		if tx.QueryRow("SELECT item_order FROM playlist_items WHERE playlist = $1 AND id = $2", id, itemId).Scan(nil, &item.order) {
+			return
+		}
+
+		moveItems = append(moveItems, item)
+	}
+
+	sort.Slice(moveItems, func(i, j int) bool {
+		return moveItems[i].order > moveItems[j].order
+	})
+
+	prevAfter := -1
+
+	affected := make(map[int]struct{})
+
+	for _, item := range moveItems {
+		var afterId int
+		var after int
+		var hasRow bool
+		if tx.QueryRow("SELECT id, item_order FROM playlist_items WHERE playlist = $1 AND item_order > (SELECT item_order FROM playlist_items WHERE id = $2) ORDER BY item_order ASC LIMIT 1", id, item.id).Scan(&hasRow, &afterId, &after) {
+			return
+		}
+		if !hasRow || afterId == prevAfter {
+			prevAfter = item.id
+			continue
+		}
+
+		if tx.Exec(nil, `
+		UPDATE playlist_items SET item_order = (CASE id
+			WHEN $1 THEN (SELECT item_order FROM playlist_items WHERE id = $2)
+			WHEN $2 THEN (SELECT item_order FROM playlist_items WHERE id = $1)
+		END)::INTEGER WHERE id IN ($1, $2)
+		`, item.id, afterId) {
+			return
+		}
+
+		affected[item.id] = struct{}{}
+		affected[afterId] = struct{}{}
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	WebSocketPlaylistEvent(id, PlaylistChanged)
+	Toast(c, ToastInfo, "Playlist items reordered", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d item(s) affected", len(affected)))))
+}
+
+func playlistMoveDown(c *gin.Context) {
+	id := stores.GetPlaylistId(c)
+
+	items, err := getCheckedItems(c)
+	if err != nil {
+		errs.PublicError(c, err)
+		return
+	}
+
+	tx := db.BeginTx(c)
+	if tx == nil {
+		return
+	}
+	defer tx.Rollback()
+
+	var moveItems []MoveItem
+	for _, itemId := range items {
+		var item MoveItem
+		var hasRow bool
+		item.id = itemId
+		if tx.QueryRow("SELECT item_order FROM playlist_items WHERE playlist = $1 AND id = $2", id, itemId).Scan(&hasRow, &item.order) {
+			return
+		}
+		moveItems = append(moveItems, item)
+	}
+
+	sort.Slice(moveItems, func(i, j int) bool {
+		return moveItems[i].order < moveItems[j].order
+	})
+
+	prevAfter := -1
+	affected := make(map[int]struct{})
+	for _, item := range moveItems {
+		var afterId int
+		var after int
+		var hasRow bool
+		if tx.QueryRow("SELECT id, item_order FROM playlist_items WHERE playlist = $1 AND item_order < (SELECT item_order FROM playlist_items WHERE id = $2) ORDER BY item_order DESC LIMIT 1", id, item.id).Scan(&hasRow, &afterId, &after) {
+			return
+		}
+
+		if !hasRow || afterId == prevAfter {
+			prevAfter = item.id
+			continue
+		}
+
+		if tx.Exec(nil, `
+		UPDATE playlist_items SET item_order = (CASE id
+			WHEN $1 THEN (SELECT item_order FROM playlist_items WHERE id = $2)
+			WHEN $2 THEN (SELECT item_order FROM playlist_items WHERE id = $1)
+		END)::INTEGER WHERE id IN ($1, $2)
+		`, item.id, afterId) {
+			return
+		}
+
+		affected[item.id] = struct{}{}
+		affected[afterId] = struct{}{}
+	}
+
+	if tx.Commit() {
+		return
+	}
+
+	WebSocketPlaylistEvent(id, PlaylistChanged)
+	Toast(c, ToastInfo, "Playlist items reordered", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d item(s) affected", len(affected)))))
 }

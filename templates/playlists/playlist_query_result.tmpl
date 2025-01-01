@@ -19,7 +19,8 @@
     <button class="base-background" hx-get="{{.NextURL}}">Next page</button>
     {{end}}
     {{if $loggedIn}}
-    <button class="accent-background" hx-post="/playlists/new" hx-prompt="Enter the new playlist name">New
+    <button class="accent-background" hx-post="/playlists/new" hx-prompt="Enter the new playlist name"
+      hx-swap="none">New
       playlist</button>
     {{end}}
   </section>
@@ -41,9 +42,9 @@
           {{if $loggedIn}}
           {{if eq (GetUsername $ctx) $playlist.OwnerUsername}}
           <a class="button-link base-background" hx-patch="/playlists/{{$playlist.Id}}/rename"
-            hx-prompt="Enter the new playlist name">Rename</a>
+            hx-prompt="Enter the new playlist name" hx-swap="none">Rename</a>
           <a class="button-link accent-background" hx-delete="/playlists/{{$playlist.Id}}/delete"
-            hx-confirm="Are you sure you want to delete this playlist?">Delete</a>
+            hx-confirm="Are you sure you want to delete this playlist?" hx-swap="none">Delete</a>
           {{end}}
           {{end}}
         </div>

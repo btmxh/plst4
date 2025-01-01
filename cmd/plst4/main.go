@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/btmxh/plst4/internal/auth"
 	"github.com/btmxh/plst4/internal/db"
 	"github.com/btmxh/plst4/internal/mailer"
-	"github.com/btmxh/plst4/internal/middlewares"
 	"github.com/btmxh/plst4/internal/routes"
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
@@ -45,13 +45,11 @@ func main() {
 	}
 	defer db.CloseDB()
 
-	err = mailer.InitMail()
-	if err != nil {
+	if err = mailer.InitNetMailer(); err != nil {
 		panic(err)
 	}
 
-	err = middlewares.InitJWT()
-	if err != nil {
+	if err = auth.InitJWT(); err != nil {
 		panic(err)
 	}
 

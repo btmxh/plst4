@@ -1,63 +1,123 @@
 {{define "head"}}
 <script src="/scripts/watch.js" type="module" defer></script>
+<script src="/scripts/websocket.js" type="module" defer></script>
+<script src="/scripts/players/player.js" type="module" defer></script>
+<script src="/scripts/players/youtube.js" type="module" defer></script>
+<script src="https://www.youtube.com/iframe_api" async defer></script>
+<title>plst4 - {{.Title}}</title>
+{{end}}
+
+{{define "managers"}}
+<form hx-target="this" hx-swap="outerHTML" hx-include="closest form">
+  <div class="button-bar">
+    {{if eq (GetUsername .Context) .Owner}}
+    <input class="accent-background" type="submit" value="Remove" hx-delete="/watch/{{.Id}}/managers/delete"
+      hx-confirm="Do you sure you want to remove these managers?" hx-swap="none">
+    {{end}}
+    <button class="base-background" type="button" hx-get="/watch/{{.Id}}/managers">Reload</button>
+    {{if eq (GetUsername .Context) .Owner}}
+    <input class="base-background" type="submit" value="Add manager" hx-post="/watch/{{.Id}}/managers/add"
+      hx-prompt="Enter the username of the manager you want to add here.">
+    {{end}}
+  </div>
+  <h2>Playlist managers</h2>
+
+  <ul>
+    <li>
+      <input type="checkbox" id="owner-checkbox" disabled="disabled">
+      <label for="owner-checkbox">
+        <strong>{{.Owner}} (owner)</strong>
+      </label>
+    </li>
+    {{range $index, $manager := .Managers}}
+    <li>
+      <input type="checkbox" id="manager-checkbox-{{$index}}" name="{{$manager}}">
+      <label for="manager-checkbox-{{$index}}">
+        <strong>{{$manager}}</strong>
+      </label>
+    </li>
+    {{end}}
+    </ol>
+</form>
 {{end}}
 
 {{define "queue"}}
-<form hx-target="this" hx-include="#state-hash-input" hx-swap="outerHTML">
-  <input type="hidden" id="state-hash-input" name="state-hash" value="{{.GlobalHash}}">
-  {{$name := "title"}}
-  <input type="ext" name="title" placeholder="Title" value="{{Get .Context $name}}">
-  {{$name := "artist"}}
-  <input type="text" name="artist" placeholder="Artist" value="{{Get .Context $name}}">
-  <select name="add-position">
-    <option value="add-to-start">Add to start</option>
-    <option value="add-to-end">Add to end</option>
-    <option value="queue-next">Queue next</option>
-  </select>
-  <input type="submit" value="add" hx-post="/watch/{{.Id}}/queue/add">
+<form hx-target="this" hx-include='#queue-form, #websocket-id-input' hx-swap="outerHTML" id="queue-form">
+  {{$name := "url"}}
+  {{if .IsManager}}
+  <section class="add-section">
+    <input class="url-bar" type="text" name="url" placeholder="URL" value="{{Get .Context $name}}">
+    <select name="add-position" class="preserve">
+      <option value="add-to-start" {{if eq (Get .Context "add-position" ) "add-to-start" }}selected{{end}}>Add to start
+      </option>
+      <option value="add-to-end" {{if eq (Get .Context "add-position" ) "add-to-end" }}selected{{end}}>Add to end
+      </option>
+      <option value="queue-next" {{if eq (Get .Context "add-position" ) "queue-next" }}selected{{end}}>Queue next
+      </option>
+    </select>
+    <input class="accent-background" type="submit" value="Add" hx-post="/watch/{{.Id}}/queue/add" hx-swap="none">
+  </section>
   <hr>
-  <div class="button-bar">
-    <input class="base-background" type="submit" value="refresh" hx-get="/watch/{{.Id}}/queue/thispage"
-      hx-vals="{{.ThisPage}}">
-    <input class="accent-background" type="submit" value="delete" hx-delete="/watch/{{.Id}}/queue/delete">
+  {{end}}
+  <div class="button-bar" hx-swap="none">
+    <div class="page-nav" hx-swap="outerHTML">
+      <input class="base-background" type="submit" value="To current" hx-get="/watch/{{.Id}}/queue/current">
+      <input class="base-background" type="submit" value="<<" hx-get="/watch/{{.Id}}/queue">
+      {{if .PrevPage}}
+      <input class="base-background" type="submit" value="<" hx-get="/watch/{{.Id}}/queue?page={{.PrevPage}}">
+      {{end}}
+      {{if .NextPage}}
+      <input class="base-background" type="submit" value=">" hx-get="/watch/{{.Id}}/queue?page={{.NextPage}}">
+      {{end}}
+      <input class="base-background" type="submit" value=">>" hx-get="/watch/{{.Id}}/queue?page=0">
+    </div>
 
-    <input class="base-background" type="submit" value="<<" hx-get="/watch/{{.Id}}/queue/firstpage">
-    {{if .PrevPage}}
-    <input class="base-background" type="submit" value="<" hx-get="/watch/{{.Id}}/queue/prevpage"
-      hx-vals="{{.PrevPage}}">
+    <input class="base-background" type="submit" value="Refresh" hx-get="/watch/{{.Id}}/queue?page={{.ThisPage}}"
+      hx-trigger="click, refresh-playlist from:body" hx-swap="outerHTML">
+    {{if .IsManager}}
+    <input class="accent-background" type="submit" value="Previous" hx-post="/watch/{{.Id}}/queue/prev">
+    <input class="accent-background" type="submit" value="Next" hx-post="/watch/{{.Id}}/queue/next">
+    <input class="accent-background" type="submit" value="Move up" hx-post="/watch/{{.Id}}/queue/up">
+    <input class="accent-background" type="submit" value="Move down" hx-post="/watch/{{.Id}}/queue/down">
     {{end}}
-    {{if .NextPage}}
-    <input class="base-background" type="submit" value=">" hx-get="/watch/{{.Id}}/queue/nextpage"
-      hx-vals="{{.NextPage}}">
+    {{if HasUsername .Context}}
+    <input class="accent-background" type="submit" value="Next Request" hx-post="/watch/{{.Id}}/queue/nextreq">
     {{end}}
-    <input class="base-background" type="submit" value=">>" hx-get="/watch/{{.Id}}/queue/lastpage">
+    {{if .IsManager}}
+    <input class="accent-background" type="submit" value="Delete" hx-delete="/watch/{{.Id}}/queue/delete">
+    {{end}}
   </div>
 
   <section class="playlist-items">
     {{if eq (len .Items) 0}}
-    <h1>Playlist is empty</h1>
+    <h1 class="centered">Playlist is empty</h1>
     {{else}}
     {{$thisPage := .ThisPage}}
     {{$playlistId := .Id}}
-    {{$currentIdx := .CurrentIdx}}
+    {{$current := .Current}}
+    {{$context := .Context}}
+    {{$isOwner := eq (GetUsername .Context) .Owner}}
+    {{$isManager := .IsManager}}
     {{range $item := .Items}}
     <div class="playlist-entry">
-      <span class="playlist-entry-length">00:00:30</span>
-      <input type="checkbox" id="playlist-item-{{$item.Id}}">
-      {{$current := eq $item.Index $currentIdx}}
-      <label for="playlist-item-{{$item.Id}}" class="{{if $current}}current-item{{end}}">
-        {{if $current}}
+      <span class="playlist-entry-length">{{FormatDuration $item.Duration}}</span>
+      {{$selected := eq (Get $context (print "pic-" $item.Id)) "on"}}
+      <input type="checkbox" name="pic-{{$item.Id}}" id="playlist-item-{{$item.Id}}" class="preserve" {{if
+        $selected}}checked{{end}}>
+      {{$isCurrent := eq $item.Id $current}}
+      <label for="playlist-item-{{$item.Id}}" class="{{if $isCurrent}}current-item{{end}}">
+        {{if $isCurrent}}
         <span class="current-item-gt">&gt;</span>
         {{end}}
         {{HumanIndex $item.Index}}. {{$item.Title}} - {{$item.Artist}}
       </label>
-      <input name="playlist-item-hash-{{$item.Id}}" type="hidden" value="{{.PositionalHash}}">
       <span class="playlist-utilities">
         <a href="{{$item.URL}}" target="_blank">link</a>
         <button type="button" class="link-button" onclick="copyPrevLink(event)">copy</button>
+        {{if $isManager}}
         <input class="link-button" type="submit" hx-patch="/watch/{{$playlistId}}/queue/goto/{{$item.Id}}" value="goto"
-          hx-vals='js:{"index": {{$item.Index}}, ...{{$thisPage}}}'
-          hx-params='playlist-item-hash-{{$item.Id}},index,state-hash,pivot,pivot-index,pivot-pos-hash'>
+          hx-params='pih-{{$item.Id}},index,state-hash,.preserve' hx-swap="none">
+        {{end}}
       </span>
     </div>
     {{end}}
@@ -67,8 +127,9 @@
 {{end}}
 
 {{define "controller"}}
+{{$isOwner := eq (GetUsername .Context) .Owner}}
 <section class="playlist-info">
-  {{if eq (GetUsername .Context) .Owner}}
+  {{if $isOwner}}
   <div class="button-bar">
     <button class="base-background" hx-patch="/watch/{{.Id}}/controller/rename" hx-prompt="Enter the new playlist name"
       hx-target="#playlist-controller" hx-swap="innerHTML">Rename</button>
@@ -80,76 +141,88 @@
   <p> Created by {{.Owner}} at {{FormatTimestampUTC .CreatedTimestamp}} </p>
 </section>
 {{$id := .Id}}
+{{$isManager := .IsManager}}
 {{with .Media}}
 <hr>
-<section class="current-media-info">
+<form class="current-media-info" hx-post="/watch/{{$id}}/controller/submit">
   <div class="grid">
     <label for="media-title">Title</label>
-    <input type="text" id="media-title" value="{{.Title}}">
-    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <input type="text" name="media-title" id="media-title" value="{{.Title}}">
+    <button type="button" class="link-button" onclick="copyPrevInput(event)">copy</button>
     <label for="media-artist">Artist</label>
-    <input type="text" id="media-artist" value="{{.Artist}}">
-    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <input type="text" name="media-artist" id="media-artist" value="{{.Artist}}">
+    <button type="button" class="link-button" onclick="copyPrevInput(event)">copy</button>
     <label for="media-original-title">Original title</label>
     <input type="text" id="media-original-title" value="{{.OriginalTitle}}" readonly>
-    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <button type="button" class="link-button" onclick="copyPrevInput(event)">copy</button>
     <label for="media-original-artist">Original artist</label>
     <input type="text" id="media-original-artist" value="{{.OriginalArtist}}" readonly>
-    <button class="link-button" onclick="copyPrevInput(event)">copy</button>
+    <button type="button" class="link-button" onclick="copyPrevInput(event)">copy</button>
   </div>
   <div class="button-bar">
-    <button class="base-background" hx-get="/watch/{{$id}}/controller" hx-target="#playlist-controller"
+    <button type="button" class="base-background" hx-get="/watch/{{$id}}/controller" hx-target="#playlist-controller"
       hx-swap="innerHTML">Reset</button>
-    <button class="accent-background" hx-post="/">Submit</button>
+    {{if $isManager}}
+    <input type="submit" class="accent-background" value="Submit">
+    {{end}}
   </div>
-</section>
-<hr>
-<section class="current-media-details">
-  <p>Media duration: {{FormatDuration .Duration}}</p>
-  <p>Media added on 2024-12-04T05:21:20, 31 view(s)</p>
-  <p>Playlist item added on 2024-12-04T05:21:20</p>
-</section>
-{{end}}
-
-<hr>
-<section>
-  <p><strong>Debug info:</strong></p>
-  <p>Playlist UUID: {{.Id}}</p>
-  <p>Global (playlist) integrity hash: {{.GlobalHash}}</p>
-  <p>Local (media) integrity hash: {{.GlobalHash}}</p>
-  {{with .Media}}
-  <p>Media UUID: {{.Id}}, Type: {{.Type}}</p>
-  <p>Playlist item UUID: {{.ItemId}} (prev {{.PrevId}}, next {{.NextId}})</p>
-  <p>Media URL: <a href="{{.URL}}" target="_blank">{{.URL}}</a></p>
+  <hr>
+  <section class="current-media-details">
+    <p>Media duration: {{FormatDuration .Duration}}</p>
+    <p>Media added on {{FormatTimestampUTC .MediaAddTimestamp}}, 31 view(s)</p>
+    <p>Playlist item added on {{FormatTimestampUTC .ItemAddTimestamp}}</p>
+  </section>
   {{end}}
-</section>
-{{end}}
 
-{{define "body"}}
-{{$loggedIn := HasUsername .Context}}
-<main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}" hx-target="closest main"
-  hx-swap="outerHTML">
-  <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
-  <article>Video placeholder</article>
-  <aside class="playlist-details">
-    <nav class="tab-bar">
-      <ul>
-        <li>
-          <input type="radio" id="tab-queue" class="tab-radio" name="playlist-details-tab" checked>
-          <label for="tab-queue">queue</label>
-        </li>
-        <li>
-          <input type="radio" id="tab-controller" class="tab-radio" name="playlist-details-tab">
-          <label for="tab-controller">controller</label>
-        </li>
-      </ul>
-    </nav>
-    <section id="playlist-queue" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/queue/firstpage"
-      hx-swap="innerHTML" hx-target="this">
-    </section>
-    <section id="playlist-controller" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/controller"
-      hx-swap="innerHTML" hx-target="this">
-    </section>
-  </aside>
-</main>
-{{end}}
+  <hr>
+  <section>
+    <p><strong>Debug info:</strong></p>
+    <p>Playlist ID: {{.Id}}</p>
+    {{with .Media}}
+    <p>Media ID: {{.Id}}, type: {{.Type}}</p>
+    <p>Playlist item ID: {{.ItemId}}</p>
+    <p>Media URL: <a href="{{.URL}}" target="_blank">{{.URL}}</a></p>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{define "body"}}
+  {{$loggedIn := HasUsername .Context}}
+  <main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}"
+    hx-target="closest main" hx-swap="outerHTML" data-playlist={{.Id}}>
+    <input id="websocket-id-input" type="hidden" name="websocket-id" value="">
+    <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
+    <article id="video-player">
+      <div id="youtube-video-player-wrapper" class="video-player-wrapper">
+        <div id="#youtube-video-player"></div>
+      </div>
+    </article>
+    <aside class="playlist-details">
+      <nav class="tab-bar">
+        <ul>
+          <li>
+            <input type="radio" id="tab-queue" class="tab-radio" name="playlist-details-tab" checked>
+            <label for="tab-queue">queue</label>
+          </li>
+          <li>
+            <input type="radio" id="tab-controller" class="tab-radio" name="playlist-details-tab">
+            <label for="tab-controller">controller</label>
+          </li>
+          <li>
+            <input type="radio" id="tab-managers" class="tab-radio" name="playlist-details-tab">
+            <label for="tab-managers">managers</label>
+          </li>
+        </ul>
+      </nav>
+      <section id="playlist-queue" class="tab-content" hx-trigger="load" hx-get="/watch/{{.Id}}/queue"
+        hx-swap="innerHTML" hx-target="this">
+      </section>
+      <section id="playlist-controller" class="tab-content" hx-trigger="load, refresh-playlist from:body"
+        hx-get="/watch/{{.Id}}/controller" hx-swap="innerHTML" hx-target="this">
+      </section>
+      <section id="playlist-managers" class="tab-content" hx-trigger="load, refresh-managers from:body"
+        hx-get="/watch/{{.Id}}/managers" hx-swap="innerHTML" hx-target="this">
+      </section>
+    </aside>
+  </main>
+  {{end}}

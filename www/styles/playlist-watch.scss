@@ -1,5 +1,27 @@
 @use "./vars.scss" as vars;
 
+#video-player {
+  .video-player-wrapper {
+    display: none;
+
+    &.show {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16/9;
+    }
+  }
+}
+
+
+.add-section {
+  display: flex;
+  flex-direction: row;
+
+  .url-bar {
+    flex-grow: 1;
+  }
+}
+
 .playlist-details {
   border: 1px vars.$accent-color solid;
   margin: 0.5em;
@@ -40,8 +62,13 @@
 
 
   &:has(#tab-queue:checked) #playlist-queue,
-  &:has(#tab-controller:checked) #playlist-controller {
+  &:has(#tab-controller:checked) #playlist-controller,
+  &:has(#tab-managers:checked) #playlist-managers {
     display: block;
+  }
+
+  .playlist-items .centered {
+    text-align: center;
   }
 
   #playlist-controller {
@@ -72,6 +99,11 @@
   }
 
   #playlist-queue {
+    .page-nav {
+      float: right;
+      width: auto;
+    }
+
     .playlist-entry {
       display: block;
 
@@ -94,6 +126,12 @@
       &:hover .playlist-utilities {
         display: inline;
       }
+    }
+  }
+
+  #playlist-managers {
+    .button-bar {
+      float: right;
     }
   }
 
