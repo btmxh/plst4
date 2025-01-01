@@ -6,18 +6,18 @@ import (
 	"strings"
 
 	"github.com/btmxh/plst4/internal/html"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/gin-gonic/gin"
 )
 
 const ErrorTitle = "error-title"
 
-func ErrorMiddleware(callback func(title, desc template.HTML)) gin.HandlerFunc {
+func ErrorMiddleware(callback func(c *gin.Context, title, desc template.HTML)) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Set(ErrorTitle, "Error")
 		c.Next()
 
 		if len(c.Errors) > 0 {
-			title := c.GetString(ErrorTitle)
+			title := stores.GetErrorTitle(c)
 			slog.Warn("Error handling request", "title", title, "errors", c.Errors)
 
 			var descriptions []string
@@ -35,7 +35,7 @@ func ErrorMiddleware(callback func(title, desc template.HTML)) gin.HandlerFunc {
 				description = template.HTML("Internal server error")
 			}
 
-			callback(html.StringAsHTML(title), description)
+			callback(c, title, description)
 		}
 	}
 }

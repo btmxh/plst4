@@ -18,6 +18,7 @@ import (
 	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/mailer"
 	"github.com/btmxh/plst4/internal/middlewares"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/dchest/uniuri"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -79,29 +80,29 @@ var recoverEmailTmpl = getEmailTemplate("recover")
 
 func AuthRouter(r *gin.RouterGroup) http.Handler {
 	handler := http.NewServeMux()
-	r.POST("/register/submit", register)
-	r.GET("/register/form", authSSRRoute(registerTmpl, "form", gin.H{}))
-	r.GET("/register", authSSRRoute(registerTmpl, "layout", gin.H{}))
 
-	r.POST("/login/submit", login)
-	r.GET("/login/form", authSSRRoute(loginTmpl, "form", gin.H{}))
-	r.GET("/login", authSSRRoute(loginTmpl, "layout", gin.H{}))
+	get := r.Group("")
+	get.Use(middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		// Toast(c, ToastError, title, desc)
+	}))
 
-	r.POST("/recover/submit", recoverFunc)
-	r.GET("/recover/form", authSSRRoute(recoverTmpl, "form", gin.H{}))
-	r.GET("/recover", authSSRRoute(recoverTmpl, "layout", gin.H{}))
+	get.GET("/register", authSSRRoute(registerTmpl, "layout", gin.H{}))
+	get.GET("/login", authSSRRoute(loginTmpl, "layout", gin.H{}))
+	get.GET("/recover", authSSRRoute(recoverTmpl, "layout", gin.H{}))
+	get.GET("/confirmmail", authSSRRoute(confirmMailTmpl, "layout", gin.H{}))
+	get.GET("/recoverdone", authSSRRoute(recoverDoneTmpl, "layout", gin.H{}))
+	get.GET("/resetpassword", resetPassword)
 
-	r.POST("/confirmmail/submit", confirmMail)
-	r.GET("/confirmmail/form", authSSRRoute(confirmMailTmpl, "form", gin.H{}))
-	r.GET("/confirmmail", authSSRRoute(confirmMailTmpl, "layout", gin.H{}))
-
-	r.GET("/recoverdone/form", authSSRRoute(recoverDoneTmpl, "form", gin.H{}))
-	r.GET("/recoverdone", authSSRRoute(recoverDoneTmpl, "layout", gin.H{}))
-
-	r.POST("/logout", logout)
-
-	r.GET("/resetpassword", resetPassword)
-	r.POST("/resetpassword/submit", resetPasswordSubmit)
+	post := r.Group("")
+	post.Use(middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		Toast(c, ToastError, title, desc)
+	}))
+	post.POST("/register/submit", register)
+	post.POST("/login/submit", login)
+	post.POST("/recover/submit", recoverFunc)
+	post.POST("/confirmmail/submit", confirmMail)
+	post.POST("/logout", logout)
+	post.POST("/resetpassword/submit", resetPasswordSubmit)
 	return handler
 }
 
@@ -122,6 +123,7 @@ var invalidLinkError = errors.New("This link is either invalid or expired. Pleas
 var invalidCodeError = errors.New("This code is either invalid or expired. Please request a new one.")
 
 func register(c *gin.Context) {
+	stores.SetErrorTitle(c, "Register error")
 	if redirectIfLoggedIn(c) {
 		return
 	}
@@ -134,7 +136,7 @@ func register(c *gin.Context) {
 	}
 
 	password := c.PostForm("password")
-	if passwordRegex.MatchString(password) {
+	if !passwordRegex.MatchString(password) {
 		errs.PublicError(c, invalidPasswordError)
 		return
 	}
@@ -209,6 +211,7 @@ func register(c *gin.Context) {
 }
 
 func login(c *gin.Context) {
+	stores.SetErrorTitle(c, "Login error")
 	if redirectIfLoggedIn(c) {
 		return
 	}
@@ -265,6 +268,7 @@ func login(c *gin.Context) {
 }
 
 func recoverFunc(c *gin.Context) {
+	stores.SetErrorTitle(c, "Password recovery error")
 	if redirectIfLoggedIn(c) {
 		return
 	}
@@ -336,6 +340,7 @@ func resetPassword(c *gin.Context) {
 }
 
 func resetPasswordSubmit(c *gin.Context) {
+	stores.SetErrorTitle(c, "Password reset error")
 	email := c.PostForm("email")
 	identifier := c.PostForm("code")
 	password := c.PostForm("password")
@@ -346,7 +351,7 @@ func resetPasswordSubmit(c *gin.Context) {
 		return
 	}
 
-	if passwordRegex.MatchString(password) {
+	if !passwordRegex.MatchString(password) {
 		errs.PublicError(c, invalidPasswordError)
 		return
 	}
@@ -387,6 +392,7 @@ func resetPasswordSubmit(c *gin.Context) {
 }
 
 func confirmMail(c *gin.Context) {
+	stores.SetErrorTitle(c, "Mail confirmation error")
 	if redirectIfLoggedIn(c) {
 		return
 	}

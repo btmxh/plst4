@@ -14,11 +14,11 @@ Log in
     autocomplete="current-password" required>
 
   <section style="width: 100%;">
-    <a style="float: right;" hx-get="/auth/recover/form/" hx-push-url="/auth/recover/">Forgot password?</a>
+    <a style="float: right;" href="/auth/recover/">Forgot password?</a>
   </section>
 
   {{template "errorMsg" .}}
   <input type="submit" value="Continue" hx-post="/auth/login/submit/">
-  <a class="return-btn no-link-effect" hx-get="/auth/register/form/" hx-push-url="/auth/register/">Create a new account</a>
+  <a class="return-btn no-link-effect" href="/auth/register/">Create a new account</a>
 </form>
 {{end}}
