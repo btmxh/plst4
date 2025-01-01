@@ -16,7 +16,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
     - name: Set up air
-      runs: go install github.com/air-verse/air@latest
+      run: go install github.com/air-verse/air@latest
     - name: Install dependencies
       run: npm install -g pnpm && pnpm install
     - name: Install Playwright Browsers
