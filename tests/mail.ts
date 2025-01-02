@@ -13,7 +13,7 @@ export interface MailContent {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const getLatestMail = async (email: string): Promise<MailContent | undefined> => {
-  await sleep(100);
+  await sleep(1000);
   const dirName = path.join(".mail", Buffer.from(email).toString("base64"));
   const dir = await fs.readdir(dirName);
   const files = dir.map(async (filename) => {
