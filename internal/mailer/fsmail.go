@@ -1,11 +1,11 @@
 package mailer
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"net/mail"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,7 +18,7 @@ func InitFSMailer() {
 }
 
 func (mailer *FSMailer) SendMail(to *mail.Address, subject string, body template.HTML) error {
-	dirName := base64.StdEncoding.EncodeToString([]byte(to.Address))
+	dirName := strings.ReplaceAll(to.Address, "@", "_at_")
 
 	if err := os.MkdirAll(".mail/"+dirName, 0755); err != nil {
 		return err
