@@ -16,6 +16,6 @@ Register
     autocomplete="new-password" required>
   {{template "errorMsg" .}}
   <input type="submit" value="Continue" hx-post="/auth/register/submit/">
-  <a class="return-btn no-link-effect" href="/auth/login/">Return to login page</a>
+  <a role="button" class="return-btn no-link-effect" href="/auth/login/">Return to login page</a>
 </form>
 {{end}}
