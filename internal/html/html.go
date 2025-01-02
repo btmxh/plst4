@@ -6,7 +6,7 @@ import (
 	"maps"
 	"time"
 
-	"github.com/btmxh/plst4/internal/auth"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +22,7 @@ func CombineArgs(args ...gin.H) gin.H {
 	return all
 }
 
-func Render(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
+func RenderGin(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.ExecuteTemplate(c.Writer, block, CombineArgs(gin.H{"Context": c}, arg)); err != nil {
 		c.Error(err).SetType(gin.ErrorTypeRender)
@@ -30,19 +30,19 @@ func Render(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
 	}
 }
 
-func RenderFunc(tmpl *template.Template, block string, arg gin.H) gin.HandlerFunc {
+func RenderGinFunc(tmpl *template.Template, block string, arg gin.H) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		Render(tmpl, c, block, arg)
+		RenderGin(tmpl, c, block, arg)
 	}
 }
 
 func DefaultFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"HasUsername": func(c *gin.Context) bool {
-			return auth.IsLoggedIn(c)
+			return stores.IsLoggedIn(c)
 		},
 		"GetUsername": func(c *gin.Context) string {
-			return auth.GetUsername(c)
+			return stores.GetUsername(c)
 		},
 		"FormatTimestampUTC": func(t time.Time) template.HTML {
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)

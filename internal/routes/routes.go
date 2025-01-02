@@ -51,3 +51,14 @@ func HxRefresh(c *gin.Context) {
 func HxPrompt(c *gin.Context) (string, error) {
 	return url.PathUnescape(c.GetHeader("Hx-Prompt"))
 }
+
+func HxNoswap(c *gin.Context) {
+	c.Header("Hx-Reswap", "none")
+}
+
+func UpdateTitle(c *gin.Context, title string) {
+	title = template.HTMLEscapeString(title)
+	c.Writer.WriteString("<title>")
+	c.Writer.WriteString(title)
+	c.Writer.WriteString("</title>")
+}
