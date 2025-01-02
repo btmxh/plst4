@@ -32,7 +32,7 @@ jobs:
       run: pnpm exec playwright install --with-deps
     - name: Create .env file
       run: |
-        echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}" >> .env
+        echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}?sslmode=disable" >> .env
         echo "MAIL_MODE=memorymail" >> .env
         echo "JWT_SECRET=secret" >> .env
     - name: Run Playwright tests
