@@ -36,7 +36,7 @@ jobs:
         echo "MAIL_MODE=memorymail" >> .env
         echo "JWT_SECRET=secret" >> .env
     - name: Run Playwright tests
-      run: pnpm exec playwright test
+      run: env -u PGSERVICEFILE pnpm exec playwright test
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
