@@ -34,7 +34,7 @@ jobs:
     - name: Migrate PostgreSQL database
       uses: vovavc/migrate-github-action@v0.2.1
       with:
-          path: ./migrations
+          path: ./db/migrations
           database: ${{ steps.postgres.outputs.connection-uri }}
           command: up
     - name: Run Playwright tests
