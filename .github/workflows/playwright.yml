@@ -25,7 +25,7 @@ jobs:
       with:
         database: plst4
     - name: Migrate PostgreSQL database
-      run: env -u PGSERVICEFILE migrate -database ${{ steps.postgres.outputs.connection-uri }} -path db/migrations up
+      run: env -u PGSERVICEFILE migrate -database "${{ steps.postgres.outputs.connection-uri }}?sslmode=disable" -path db/migrations up
     - name: Install dependencies
       run: npm install -g pnpm && pnpm install
     - name: Install Playwright Browsers
