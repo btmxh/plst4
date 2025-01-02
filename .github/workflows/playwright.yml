@@ -31,6 +31,12 @@ jobs:
         echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}" >> .env
         echo "MAIL_MODE=memorymail" >> .env
         echo "JWT_SECRET=secret" >> .env
+    - name: Migrate PostgreSQL database
+      uses: vovavc/migrate-github-action@v0.2.1
+      with:
+          path: ./migrations
+          database: ${{ steps.postgres.outputs.connection-uri }}
+          command: up
     - name: Run Playwright tests
       run: pnpm exec playwright test
     - uses: actions/upload-artifact@v4

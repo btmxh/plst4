@@ -22,3 +22,9 @@ test('has favicon', async ({ page }) => {
 
   expect(faviconResponse.status()).toBe(200);
 })
+
+test('has header', async ({ page }) => {
+  await page.goto("/");
+  const header = await page.$("h1");
+  expect(header).not.toBeNull();
+});
