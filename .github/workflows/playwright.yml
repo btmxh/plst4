@@ -19,17 +19,17 @@ jobs:
       run: |
         go install github.com/air-verse/air@latest
         go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-    - name: Install dependencies
-      run: npm install -g pnpm && pnpm install
-    - name: Migrate PostgreSQL database
-      run: env -u PGSERVICEFILE migrate -database ${{ steps.postgres.outputs.connection-uri }} -path db/migrations up
-    - name: Install Playwright Browsers
-      run: pnpm exec playwright install --with-deps
     - name: Set up PostgreSQL database
       uses: ikalnytskyi/action-setup-postgres@v7
       id: postgres
       with:
         database: plst4
+    - name: Migrate PostgreSQL database
+      run: env -u PGSERVICEFILE migrate -database ${{ steps.postgres.outputs.connection-uri }} -path db/migrations up
+    - name: Install dependencies
+      run: npm install -g pnpm && pnpm install
+    - name: Install Playwright Browsers
+      run: pnpm exec playwright install --with-deps
     - name: Create .env file
       run: |
         echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}" >> .env
