@@ -1,5 +1,7 @@
-/dist/
+/dist/scripts/
+/dist/styles/
 .env
+/.mail/
 /node_modules/
 /tmp/
 /test-results/

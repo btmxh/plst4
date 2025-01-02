@@ -15,24 +15,28 @@ jobs:
         node-version: lts/*
     - name: Set up Go
       uses: actions/setup-go@v5
-    - name: Set up air
-      run: go install github.com/air-verse/air@latest
-    - name: Install dependencies
-      run: npm install -g pnpm && pnpm install
-    - name: Install Playwright Browsers
-      run: pnpm exec playwright install --with-deps
+    - name: Set up air and golang-migrate
+      run: |
+        go install github.com/air-verse/air@latest
+        go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
     - name: Set up PostgreSQL database
       uses: ikalnytskyi/action-setup-postgres@v7
       id: postgres
       with:
         database: plst4
+    - name: Migrate PostgreSQL database
+      run: env -u PGSERVICEFILE migrate -database "${{ steps.postgres.outputs.connection-uri }}?sslmode=disable" -path db/migrations up
+    - name: Install dependencies
+      run: npm install -g pnpm && pnpm install
+    - name: Install Playwright Browsers
+      run: pnpm exec playwright install --with-deps
     - name: Create .env file
       run: |
-        echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}" >> .env
-        echo "MAIL_MODE=memorymail" >> .env
+        echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}?sslmode=disable" >> .env
+        echo "MAIL_MODE=fsmail" >> .env
         echo "JWT_SECRET=secret" >> .env
     - name: Run Playwright tests
-      run: pnpm exec playwright test
+      run: env -u PGSERVICEFILE pnpm exec playwright test
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:

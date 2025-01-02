@@ -109,10 +109,10 @@ func AuthRouter(r *gin.RouterGroup) http.Handler {
 var invalidUsernameError = errors.New("Username must be between 3 and 50 characters long and can only contain letters, numbers, hyphens (-), and underscores (_).")
 var emptyUsernameError = errors.New("Username must not be empty.")
 var usernameRegex = regexp.MustCompile("^[a-zA-Z0-9_-]{3,50}$")
-var invalidPasswordError = errors.New("Password must be at least 8 characters long and at most 64 characters long.")
+var invalidPasswordError = errors.New("Password must contain 8-64	characters, including lowercase letters, uppercase letters, numbers and special characters.")
 var emptyPasswordError = errors.New("Password must not be empty.")
 var invalidPasswordHashError = errors.New("Invalid password. Please try another one.")
-var passwordRegex = regexp.MustCompile("[^a-zA-Z0-9_!@#$%^&*()-+=]{8,64}")
+var passwordRegex = regexp.MustCompile("^[a-zA-Z0-9_!@#$%^&*()\\-+=]{8,64}$")
 var passwordNotMatchError = errors.New("Passwords do not match.")
 var invalidEmailError = errors.New("Invalid email.")
 var usernameAlreadyTakenError = errors.New("Username is already taken.")
@@ -352,6 +352,7 @@ func resetPasswordSubmit(c *gin.Context) {
 	}
 
 	if !passwordRegex.MatchString(password) {
+		errs.PrivateError(c, fmt.Errorf("Password doesn't match: %s != %s", password, passwordConfirm))
 		errs.PublicError(c, invalidPasswordError)
 		return
 	}

@@ -37,6 +37,9 @@ func InitMailer() error {
 	switch mode {
 	case "netmail":
 		return InitNetMailer()
+	case "fsmail":
+		InitFSMailer()
+		return nil
 	case "memorymail":
 		InitMemoryMailer()
 		return nil
