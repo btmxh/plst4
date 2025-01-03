@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -74,6 +75,9 @@ func Register(tx *db.Tx, email *mail.Address, username, password string) (hasErr
 		return true
 	}
 
+	slog.Info("User registration successful",
+		slog.String("username", username),
+		slog.String("email", email.Address))
 	return false
 }
 
@@ -108,6 +112,7 @@ func LogIn(tx *db.Tx, username, password string) (signedToken string, timeout ti
 		return signedToken, timeout, true
 	}
 
+	slog.Info("User authentication successful", slog.String("username", username))
 	return signedToken, timeout, false
 }
 
@@ -125,7 +130,12 @@ func SendRecoveryEmail(tx *db.Tx, email *mail.Address) (hasErr bool) {
 
 	identifier := uniuri.New()
 	hostname := "http://localhost:6972"
-	go mailer.SendMailTemplated(email, "Recover your plst4 account", recoverEmailTmpl, hostname+"/auth/resetpassword?code="+identifier+"&email="+url.QueryEscape(email.Address))
+	go func() {
+		err := mailer.SendMailTemplated(email, "Recover your plst4 account", recoverEmailTmpl, hostname+"/auth/resetpassword?code="+identifier+"&email="+url.QueryEscape(email.Address))
+		if err != nil {
+			slog.Error("Failed to send recovery email", "err", err, slog.String("email", email.Address))
+		}
+	}()
 
 	if tx.Exec(nil, "INSERT INTO password_reset (email, identifier) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET identifier = EXCLUDED.identifier", email.Address, identifier) {
 		return true
@@ -183,6 +193,11 @@ func ConfirmMail(tx *db.Tx, identifier, username string) (hasErr bool) {
 		return true
 	}
 
-	return tx.Exec(nil, "DELETE FROM pending_users WHERE username = $1 AND identifier = $2", username, identifier) ||
-		tx.Exec(nil, "INSERT INTO users (username, password_hashed, email) VALUES ($1, $2, $3)", username, password_hashed, email)
+	if tx.Exec(nil, "DELETE FROM pending_users WHERE username = $1 AND identifier = $2", username, identifier) ||
+		tx.Exec(nil, "INSERT INTO users (username, password_hashed, email) VALUES ($1, $2, $3)", username, password_hashed, email) {
+		return true
+	}
+
+	slog.Info("Mail confirmation successful", slog.String("username", username), slog.String("email", email))
+	return false
 }

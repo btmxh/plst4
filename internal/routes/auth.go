@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -133,6 +134,9 @@ func register(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Registering user",
+		slog.String("username", username),
+		slog.String("email", email.Address))
 	if services.Register(tx, email, username, password) {
 		return
 	}
@@ -170,6 +174,7 @@ func login(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Logging in user", slog.String("username", username))
 	signedToken, timeout, hasErr := services.LogIn(tx, username, password)
 	if hasErr {
 		return
@@ -203,6 +208,7 @@ func recoverFunc(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Sending recovery email", slog.String("email", email.Address))
 	if services.SendRecoveryEmail(tx, email) {
 		return
 	}
@@ -225,6 +231,7 @@ func resetPassword(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Resetting password", slog.String("email", email), slog.String("code", identifier))
 	if services.ResetPasswordRequestValid(tx, identifier, email) {
 		return
 	}
@@ -260,6 +267,7 @@ func resetPasswordSubmit(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Resetting password", slog.String("email", email), slog.String("code", identifier))
 	if services.ResetPassword(tx, identifier, email, password) {
 		return
 	}
@@ -287,6 +295,7 @@ func confirmMail(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
+	slog.Info("Confirming mail", slog.String("code", identifier), slog.String("username", username))
 	if services.ConfirmMail(tx, identifier, username) {
 		return
 	}
