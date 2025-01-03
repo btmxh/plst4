@@ -8,6 +8,7 @@ import (
 type MediaKind string
 
 const (
+	MediaKindNone    MediaKind = "none"
 	MediaKindYoutube MediaKind = "yt"
 )
 

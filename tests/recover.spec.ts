@@ -1,6 +1,7 @@
-import { test, expect, Page } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
 import { load as loadHtml } from "cheerio";
 import { newEmail, getLatestMail } from './mail';
+import { test } from './common';
 
 const register = async (page: Page, browserName: string, identifier: string, password: string) => {
   const email = newEmail(browserName, identifier);
@@ -51,3 +52,58 @@ test('basic-recover-password', async ({ page, browserName }) => {
   await page.getByRole('button', { name: "Continue" }).click();
   await expect(page).toHaveTitle('plst4 - Home');
 });
+
+test.describe("tests with recovering default user password", () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeEach(async ({ page, browserName }) => {
+    await page.goto("/auth/recover");
+    await expect(page).toHaveTitle('plst4 - Account recovery');
+    await page.getByLabel("Email").fill(`${browserName}@plst.dev`);
+    await page.getByRole('button', { name: "Continue" }).click();
+  });
+
+  test("expected flow", async ({ page, browserName }) => {
+    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
+    expect(mailContent).toBeDefined();
+    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
+
+    await page.getByLabel("Password", { exact: true }).fill('default-password');
+    await page.getByLabel("Confirm password").fill('default-password');
+    await page.getByRole('button', { name: "Continue" }).click();
+    await expect(page).toHaveTitle('plst4 - Log in');
+  });
+
+  test("invalid password", async ({ page, browserName }) => {
+    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
+    expect(mailContent).toBeDefined();
+    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
+
+    await page.getByLabel("Password", { exact: true }).fill('short');
+    await page.getByLabel("Confirm password").fill('short');
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('contain 8-64 characters')");
+  });
+
+  test("mismatch password", async ({ page, browserName }) => {
+    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
+    expect(mailContent).toBeDefined();
+    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
+
+    await page.getByLabel("Password", { exact: true }).fill('password1');
+    await page.getByLabel("Confirm password").fill('password2');
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('Passwords do not match')");
+  });
+
+  test("wrong link", async ({ page, browserName }) => {
+    await page.goto(`/auth/resetpassword?code=wrongcode&email=${browserName}@plst.dev`);
+    await page.waitForSelector("h1:has-text('Reset password error')");
+  });
+
+  test("wrong email", async ({ page, browserName }) => {
+    await page.goto(`/auth/resetpassword?code=wrongcode&email=${browserName}@plst.dev.wrong.email`);
+    await page.waitForSelector("h1:has-text('Reset password error')");
+  })
+});
+

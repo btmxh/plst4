@@ -11,8 +11,7 @@ import (
 )
 
 func getTemplate(name string, paths ...string) *template.Template {
-	paths = append(paths, "templates/layout.tmpl")
-	return template.Must(template.New(name).Funcs(html.DefaultFuncMap()).ParseFiles(paths...))
+	return html.GetTemplate(name, paths...)
 }
 
 func CreateMainRouter() http.Handler {
@@ -50,4 +49,15 @@ func HxRefresh(c *gin.Context) {
 
 func HxPrompt(c *gin.Context) (string, error) {
 	return url.PathUnescape(c.GetHeader("Hx-Prompt"))
+}
+
+func HxNoswap(c *gin.Context) {
+	c.Header("Hx-Reswap", "none")
+}
+
+func UpdateTitle(c *gin.Context, title string) {
+	title = template.HTMLEscapeString(title)
+	c.Writer.WriteString("<title>")
+	c.Writer.WriteString(title)
+	c.Writer.WriteString("</title>")
 }

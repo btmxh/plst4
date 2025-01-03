@@ -1,4 +1,4 @@
-package auth
+package stores
 
 import "github.com/gin-gonic/gin"
 

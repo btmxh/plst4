@@ -1,0 +1,10 @@
+{{define "head"}}
+<title>plst4 - Error</title>
+{{end}}
+
+{{define "body"}}
+<main class="main-content medium {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
+  <h1> {{.Title}} </h1>
+  <p> {{.Description}} </p>
+</main>
+{{end}}

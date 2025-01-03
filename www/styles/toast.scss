@@ -83,4 +83,13 @@
       scale: 1.02;
     }
   }
+
+  @media(prefers-reduced-motion) {
+
+    .info,
+    .error {
+      animation: none;
+      opacity: 1;
+    }
+  }
 }

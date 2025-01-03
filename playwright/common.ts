@@ -7,3 +7,4 @@ import path from "path";
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 export const exec = promisify(proc.exec);
 export const DATABASE_URL = env.DATABASE_URL;
+export const baseUrl = "http://127.0.0.1:6972";

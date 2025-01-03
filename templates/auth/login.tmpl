@@ -18,7 +18,7 @@ Log in
   </section>
 
   {{template "errorMsg" .}}
-  <input type="submit" value="Continue" hx-post="/auth/login/submit/">
+  <input type="submit" value="Continue" hx-post="/auth/login/submit/" hx-swap="none">
   <a role="button" class="return-btn no-link-effect" href="/auth/register/">Create a new account</a>
 </form>
 {{end}}

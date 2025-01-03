@@ -3,6 +3,7 @@ package middlewares
 import (
 	"html/template"
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/btmxh/plst4/internal/html"
@@ -33,6 +34,7 @@ func ErrorMiddleware(callback func(c *gin.Context, title, desc template.HTML)) g
 				description = template.HTML(strings.Join(descriptions, "<br>"))
 			} else {
 				description = template.HTML("Internal server error")
+				c.Status(http.StatusInternalServerError)
 			}
 
 			callback(c, title, description)

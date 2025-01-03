@@ -1,5 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { newEmail, getLatestMail } from './mail';
+import { test } from './common';
 
 test('title-login', async ({ page }) => {
   await page.goto('/auth/login');
