@@ -67,3 +67,8 @@ func DefaultFuncMap() template.FuncMap {
 		},
 	}
 }
+
+func GetTemplate(name string, paths ...string) *template.Template {
+	paths = append(paths, "templates/layout.tmpl")
+	return template.Must(template.New(name).Funcs(DefaultFuncMap()).ParseFiles(paths...))
+}

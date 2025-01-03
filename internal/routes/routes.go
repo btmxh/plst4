@@ -11,8 +11,7 @@ import (
 )
 
 func getTemplate(name string, paths ...string) *template.Template {
-	paths = append(paths, "templates/layout.tmpl")
-	return template.Must(template.New(name).Funcs(html.DefaultFuncMap()).ParseFiles(paths...))
+	return html.GetTemplate(name, paths...)
 }
 
 func CreateMainRouter() http.Handler {

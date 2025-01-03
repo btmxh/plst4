@@ -62,7 +62,7 @@ func AuthRouter(r *gin.RouterGroup) http.Handler {
 
 	get := r.Group("")
 	get.Use(middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
-		// Toast(c, ToastError, title, desc)
+		html.RenderError(c, title, desc)
 	}))
 
 	get.GET("/register", authSSRRoute(registerTmpl, "layout", gin.H{}))
@@ -223,12 +223,12 @@ func resetPassword(c *gin.Context) {
 	if tx == nil {
 		return
 	}
+	defer tx.Rollback()
 
 	if services.ResetPasswordRequestValid(tx, identifier, email) {
 		return
 	}
 
-	defer tx.Rollback()
 	if tx.Commit() {
 		return
 	}

@@ -183,7 +183,7 @@ input[type="submit"]:not(.link-button) {
   margin: 0.1em;
   font-family: inherit;
   font-size: 1em;
-  transition: all 0.5s ease;
+  transition: filter 0.5s ease;
   color: black;
   cursor: pointer;
   text-decoration: none;
@@ -214,4 +214,14 @@ footer {
 ol {
   list-style-type: decimal;
   margin-left: 1em;
+}
+
+@media (prefers-reduced-motion) {
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
