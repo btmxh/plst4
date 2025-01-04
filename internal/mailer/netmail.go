@@ -29,5 +29,6 @@ func (mailer *NetMailer) SendMail(to *mail.Address, subject string, body templat
 	m.SetHeader("From", "plst4@plst.dev")
 	m.SetHeader("To", to.Address)
 	m.SetBody("text/html", string(body))
-	return mailer.Dealer.DialAndSend(m)
+	go mailer.Dealer.DialAndSend(m)
+	return nil
 }

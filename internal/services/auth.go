@@ -34,6 +34,7 @@ var wrongCredentialsError = errors.New("Either username or password is incorrect
 var invalidLinkError = errors.New("This link is either invalid or expired. Please request a new one.")
 var invalidCodeError = errors.New("This code is either invalid or expired. Please request a new one.")
 var tokenGenerationError = errors.New("Unable to generate login token. Please try again.")
+var sendEmailError = errors.New("Unable to send confirmation email. Please try again.")
 
 var usernameRegex = regexp.MustCompile("^[a-zA-Z0-9_-]{3,50}$")
 var passwordRegex = regexp.MustCompile("^[a-zA-Z0-9_!@#$%^&*()\\-+=]{8,64}$")
@@ -69,7 +70,11 @@ func Register(tx *db.Tx, email *mail.Address, username, password string) (hasErr
 	}
 
 	identifier := uniuri.New()
-	go mailer.SendMailTemplated(email, "Confirm your plst4 email", confirmEmailTmpl, identifier)
+	if err := mailer.SendMailTemplated(email, "Confirm your plst4 email", confirmEmailTmpl, identifier); err != nil {
+		tx.PrivateError(err)
+		tx.PublicError(http.StatusInternalServerError, sendEmailError)
+		return true
+	}
 
 	if tx.Exec(nil, "INSERT INTO pending_users (identifier, username, password_hashed, email) VALUES ($1, $2, $3, $4)", identifier, username, password_hashed, email.Address) {
 		return true
