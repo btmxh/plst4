@@ -3,6 +3,7 @@ package mailer
 import (
 	"encoding/json"
 	"html/template"
+	"log/slog"
 	"net/mail"
 	"os"
 	"strings"
@@ -33,5 +34,10 @@ func (mailer *FSMailer) SendMail(to *mail.Address, subject string, body template
 		return err
 	}
 
-	return os.WriteFile(filename, content, 0644)
+	if err := os.WriteFile(filename, content, 0644); err != nil {
+		return err
+	}
+
+	slog.Info("FS mail sent", slog.String("to", to.Address), slog.String("subject", subject), slog.String("path", filename))
+	return nil
 }
