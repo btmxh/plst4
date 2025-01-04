@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"html/template"
+	"log/slog"
 	"net/mail"
 )
 
@@ -21,5 +22,6 @@ func InitMemoryMailer() {
 func (mailer *MemoryMailer) SendMail(to *mail.Address, subject string, body template.HTML) error {
 	mail := Mail{Subject: subject, Body: body}
 	mailer.Inboxes[to.Address] = append(mailer.Inboxes[to.Address], mail)
+	slog.Info("Memory mail sent", slog.String("to", to.Address), slog.String("subject", subject))
 	return nil
 }

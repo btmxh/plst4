@@ -6,6 +6,7 @@ export interface MailContent {
 }
 
 export const getLatestMail = async (email: string): Promise<MailContent | undefined> => {
+  console.log(`Getting latest mail for ${email}`);
   const query = new URLSearchParams({ email })
   const response = await fetch(`${baseUrl}/mail?${query.toString()}`);
   if (!response.ok) {
