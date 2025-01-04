@@ -1,33 +1,18 @@
-import fs from 'fs/promises';
-import path from 'path';
-
-export const newEmail = (browser: string, identifier: string) => {
-  return `${identifier}.${browser}@plst.dev`;
-};
+import { baseUrl } from '../playwright/common';
 
 export interface MailContent {
   subject: string
   body: string
 }
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export const getLatestMail = async (email: string): Promise<MailContent | undefined> => {
-  await sleep(100);
-  const dirName = path.join(".mail", email.replace("@", "_at_"));
-  const dir = await fs.readdir(dirName);
-  const files = dir.map(async (filename) => {
-    const filePath = path.join(dirName, filename);
-    const stats = await fs.stat(filePath);
-    return { path: filePath, mtime: stats.mtime };
-  });
-  const fileInfos = await Promise.all(files);
-  fileInfos.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-  if (fileInfos.length == 0) {
+  const query = new URLSearchParams({ email })
+  const response = await fetch(`${baseUrl}/mail?${query.toString()}`);
+  if (!response.ok) {
     return undefined;
   }
-
-  const content = await fs.readFile(fileInfos[0].path);
-  return JSON.parse(content.toString('utf-8')) satisfies MailContent;
+  return {
+    subject: response.headers.get("Subject")!,
+    body: await response.text()
+  };
 }

@@ -24,13 +24,18 @@ func CreateMainRouter() http.Handler {
 	WatchRouter(router.Group("/watch"))
 	PlaylistRouter(router.Group("/playlists"))
 	WebSocketRouter(router.Group("/ws"))
+	// only enabled when using memorymail
+	MailRouter(router.Group("/mail"))
 
 	router.Static("/scripts", "./dist/scripts")
 	router.Static("/styles", "./dist/styles")
 	router.Static("/assets", "./dist/assets")
 	router.StaticFile("/libs/htmx.min.js", "./node_modules/htmx.org/dist/htmx.esm.js")
-	// for source map only, may be disabled in prod
-	router.Static("/www", "./www")
+
+	// for source map only
+	if gin.Mode() != gin.ReleaseMode {
+		router.Static("/www", "./www")
+	}
 
 	return router
 }

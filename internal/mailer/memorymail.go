@@ -11,15 +11,15 @@ type Mail struct {
 }
 
 type MemoryMailer struct {
-	inboxes map[string][]Mail
+	Inboxes map[string][]Mail
 }
 
 func InitMemoryMailer() {
-	DefaultMailer = &MemoryMailer{inboxes: make(map[string][]Mail)}
+	DefaultMailer = &MemoryMailer{Inboxes: make(map[string][]Mail)}
 }
 
 func (mailer *MemoryMailer) SendMail(to *mail.Address, subject string, body template.HTML) error {
 	mail := Mail{Subject: subject, Body: body}
-	mailer.inboxes[to.Address] = append(mailer.inboxes[to.Address], mail)
+	mailer.Inboxes[to.Address] = append(mailer.Inboxes[to.Address], mail)
 	return nil
 }

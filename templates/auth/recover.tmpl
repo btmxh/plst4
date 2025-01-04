@@ -8,7 +8,7 @@ Account recovery
   <label for="recovery-email" autofocus>Enter the email you signed up with</label>
   <input id="recovery-email" name="email" type="email" autocomplete="email" placeholder="Your email here" required>
   {{template "errorMsg" .}}
-  <input type="submit" value="Continue" hx-post="/auth/recover/submit/" hx-swap="none">
+  <input type="submit" value="Continue" hx-post="/auth/recover/submit/">
   <a role="button" class="return-btn no-link-effect" href="/auth/login/">Return to login page</a>
 </form>
 {{end}}

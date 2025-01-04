@@ -1,45 +1,32 @@
 import { expect, Page } from '@playwright/test';
 import { load as loadHtml } from "cheerio";
-import { newEmail, getLatestMail } from './mail';
-import { test } from './common';
+import { getLatestMail } from './mail';
+import { test, TestAccount } from './common';
 
-const register = async (page: Page, browserName: string, identifier: string, password: string) => {
-  const email = newEmail(browserName, identifier);
-  const username = `${identifier}-${browserName}`;
-
-  await page.goto('/auth/register');
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByLabel("Confirm password").fill(password);
-  await page.getByRole('button', { name: "Continue" }).click();
-
-  const mailContent = await getLatestMail(email);
-  const code = mailContent!.body.substring(mailContent!.body.indexOf('your confirmation code:') + 'your confirmation code:'.length + 1).trim();
-
-  await page.getByLabel('Enter the confirmation code mailed to your email').fill(code);
-  await page.getByRole('button', { name: "Continue" }).click();
-}
-
-test('basic-recover-password', async ({ page, browserName }) => {
-  await register(page, browserName, 'basic-recover-password', 'password');
-  await page.goto('/auth/login');
-  await page.getByRole('link', { name: "Forgot password" }).click();
-
-  const username = `basic-recover-password-${browserName}`;
-  const email = newEmail(browserName, 'basic-recover-password');
-
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole('button', { name: "Continue" }).click();
-
-  const mailContent = await getLatestMail(email);
+const getRecoverLink = async (acc: TestAccount) => {
+  const mailContent = await getLatestMail(acc.email);
   expect(mailContent).toBeDefined();
   expect(mailContent!.subject).toBe('Recover your plst4 account');
   const $ = loadHtml(mailContent!.body);
   const link = $('a').attr('href');
   expect(link).toBeDefined();
+  return link!;
+};
 
-  await page.goto(link!);
+const submitForgotPassEmail = async (page: Page, acc: TestAccount) => {
+  await page.goto('/auth/login');
+  await page.getByRole('link', { name: "Forgot password" }).click();
+  await page.getByLabel("Email").fill(acc.email);
+  await page.getByRole('button', { name: "Continue" }).click();
+  await expect(page).toHaveTitle('plst4 - Account recovery');
+};
+
+test('basic-recover-password', async ({ page, browserName }) => {
+  const acc = new TestAccount('basic-recover-password', browserName, 'password');
+  await acc.register(page);
+  await submitForgotPassEmail(page, acc);
+  const link = await getRecoverLink(acc);
+  await page.goto(link);
 
   await expect(page).toHaveTitle('plst4 - Account recovery');
   await page.getByLabel("Password", { exact: true }).fill('new-password');
@@ -47,27 +34,22 @@ test('basic-recover-password', async ({ page, browserName }) => {
   await page.getByRole('button', { name: "Continue" }).click();
 
   await expect(page).toHaveTitle('plst4 - Log in');
-  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Username").fill(acc.username);
+  await page.getByLabel("Password").fill('password');
+  await page.getByRole('button', { name: "Continue" }).click();
+  await page.waitForSelector(".error > .toast-wrapper > p:has-text('Either username or password is incorrect.')");
+  await page.getByLabel("Username").fill(acc.username);
   await page.getByLabel("Password").fill('new-password');
   await page.getByRole('button', { name: "Continue" }).click();
   await expect(page).toHaveTitle('plst4 - Home');
 });
 
 test.describe("tests with recovering default user password", () => {
-  test.describe.configure({ mode: 'serial' });
-
-  test.beforeEach(async ({ page, browserName }) => {
-    await page.goto("/auth/recover");
-    await expect(page).toHaveTitle('plst4 - Account recovery');
-    await page.getByLabel("Email").fill(`${browserName}@plst.dev`);
-    await page.getByRole('button', { name: "Continue" }).click();
-  });
-
   test("expected flow", async ({ page, browserName }) => {
-    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
-    expect(mailContent).toBeDefined();
-    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
-
+    const acc = new TestAccount('recover-default-password-expected', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
     await page.getByLabel("Password", { exact: true }).fill('default-password');
     await page.getByLabel("Confirm password").fill('default-password');
     await page.getByRole('button', { name: "Continue" }).click();
@@ -75,10 +57,10 @@ test.describe("tests with recovering default user password", () => {
   });
 
   test("invalid password", async ({ page, browserName }) => {
-    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
-    expect(mailContent).toBeDefined();
-    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
-
+    const acc = new TestAccount('recover-default-password-invalid', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
     await page.getByLabel("Password", { exact: true }).fill('short');
     await page.getByLabel("Confirm password").fill('short');
     await page.getByRole('button', { name: "Continue" }).click();
@@ -86,18 +68,21 @@ test.describe("tests with recovering default user password", () => {
   });
 
   test("mismatch password", async ({ page, browserName }) => {
-    const mailContent = await getLatestMail(`${browserName}@plst.dev`);
-    expect(mailContent).toBeDefined();
-    await page.goto(loadHtml(mailContent!.body)('a').attr('href')!);
-
+    const acc = new TestAccount('recover-default-password-mismatch', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
     await page.getByLabel("Password", { exact: true }).fill('password1');
     await page.getByLabel("Confirm password").fill('password2');
     await page.getByRole('button', { name: "Continue" }).click();
     await page.waitForSelector(".error > .toast-wrapper > p:has-text('Passwords do not match')");
   });
 
-  test("wrong link", async ({ page, browserName }) => {
-    await page.goto(`/auth/resetpassword?code=wrongcode&email=${browserName}@plst.dev`);
+  test("wrong code", async ({ page, browserName }) => {
+    const acc = new TestAccount('recover-default-password-link', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(`/auth/resetpassword?code=wrongcode&email=${acc.email}`);
     await page.waitForSelector("h1:has-text('Reset password error')");
   });
 
