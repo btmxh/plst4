@@ -33,7 +33,7 @@ jobs:
     - name: Create .env file
       run: |
         echo "DATABASE_URL=${{ steps.postgres.outputs.connection-uri }}?sslmode=disable" >> .env
-        echo "MAIL_MODE=fsmail" >> .env
+        echo "MAIL_MODE=memorymail" >> .env
         echo "JWT_SECRET=secret" >> .env
     - name: Run Playwright tests
       run: env -u PGSERVICEFILE pnpm exec playwright test
