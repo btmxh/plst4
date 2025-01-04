@@ -24,13 +24,17 @@ export class TestAccount {
     this.password = password;
   }
 
-  async register(page: Page, baseUrl = '') {
+  async tryRegister(page: Page, baseUrl = '') {
     await page.goto(`${baseUrl}/auth/register`);
     await page.getByLabel("Email").fill(this.email);
     await page.getByLabel("Username").fill(this.username);
     await page.getByLabel("Password", { exact: true }).fill(this.password);
     await page.getByLabel("Confirm password").fill(this.password);
     await page.getByRole('button', { name: "Continue" }).click();
+  }
+
+  async register(page: Page, baseUrl = '') {
+    this.tryRegister(page, baseUrl);
 
     await page.waitForSelector("h1:has-text('Confirm your email')");
     const mailContent = await getLatestMail(this.email);

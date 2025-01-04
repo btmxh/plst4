@@ -15,14 +15,20 @@ func MailRouter(g *gin.RouterGroup) {
 
 	g.GET("/", func(c *gin.Context) {
 		email := c.Query("email")
-		inbox, ok := mail.Inboxes[email]
-		if !ok || len(inbox) == 0 {
+		var lastMail mailer.Mail
+		var hasMail bool
+		mail.GetInbox(email, func(inbox []mailer.Mail) {
+			if len(inbox) > 0 {
+				lastMail = inbox[len(inbox)-1]
+				hasMail = true
+			}
+		})
+		if !hasMail {
 			c.AbortWithStatus(http.StatusNotFound)
 		} else {
-			item := inbox[len(inbox)-1]
 			c.Header("Content-Type", "text/html; charset=utf-8")
-			c.Header("Subject", item.Subject)
-			c.String(http.StatusOK, string(item.Body))
+			c.Header("Subject", lastMail.Subject)
+			c.String(http.StatusOK, string(lastMail.Body))
 		}
 	})
 }

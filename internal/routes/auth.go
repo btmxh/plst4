@@ -86,7 +86,7 @@ func AuthRouter(r *gin.RouterGroup) http.Handler {
 	return handler
 }
 
-var invalidUsernameError = errors.New("Username must be between 3 and 50 characters long and can only contain letters, numbers, hyphens (-), and underscores (_).")
+var invalidUsernameError = errors.New("Username must contain 3-50 characters, including lowercase letters, uppercase letters, numbers, hyphens (-), and underscores (_).")
 var emptyUsernameError = errors.New("Username must not be empty.")
 var usernameRegex = regexp.MustCompile("^[a-zA-Z0-9_-]{3,50}$")
 var invalidPasswordError = errors.New("Password must contain 8-64	characters, including lowercase letters, uppercase letters, numbers and special characters.")
@@ -94,6 +94,7 @@ var emptyPasswordError = errors.New("Password must not be empty.")
 var passwordRegex = regexp.MustCompile("^[a-zA-Z0-9_!@#$%^&*()\\-+=]{8,64}$")
 var passwordNotMatchError = errors.New("Passwords do not match.")
 var invalidEmailError = errors.New("Invalid email.")
+var longEmailError = errors.New("Email must not be longer than 100 characters.")
 var invalidLinkError = errors.New("This link is either invalid or expired. Please request a new one.")
 var invalidCodeError = errors.New("This code is either invalid or expired. Please request a new one.")
 
@@ -125,6 +126,11 @@ func register(c *gin.Context) {
 	if err != nil {
 		handler.PrivateError(err)
 		handler.PublicError(http.StatusUnprocessableEntity, invalidEmailError)
+		return
+	}
+
+	if len(email.Address) > 100 {
+		handler.PublicError(http.StatusUnprocessableEntity, longEmailError)
 		return
 	}
 
@@ -164,7 +170,7 @@ func login(c *gin.Context) {
 
 	password := c.PostForm("password")
 	if len(password) == 0 {
-		handler.PrivateError(emptyPasswordError)
+		handler.PublicError(http.StatusUnprocessableEntity, emptyPasswordError)
 		return
 	}
 
@@ -251,12 +257,12 @@ func resetPasswordSubmit(c *gin.Context) {
 	passwordConfirm := c.PostForm("password-confirm")
 
 	if !passwordRegex.MatchString(password) {
-		handler.PrivateError(fmt.Errorf("Password doesn't match: %s != %s", password, passwordConfirm))
 		handler.PublicError(http.StatusUnprocessableEntity, invalidPasswordError)
 		return
 	}
 
 	if password != passwordConfirm {
+		handler.PrivateError(fmt.Errorf("Password doesn't match: %s != %s", password, passwordConfirm))
 		handler.PublicError(http.StatusUnprocessableEntity, passwordNotMatchError)
 		return
 	}

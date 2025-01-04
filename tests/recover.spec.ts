@@ -18,7 +18,7 @@ const submitForgotPassEmail = async (page: Page, acc: TestAccount) => {
   await page.getByRole('link', { name: "Forgot password" }).click();
   await page.getByLabel("Email").fill(acc.email);
   await page.getByRole('button', { name: "Continue" }).click();
-  await expect(page).toHaveTitle('plst4 - Account recovery');
+  await page.waitForSelector("h1:has-text('Check your email')");
 };
 
 test('basic-recover-password', async ({ page, browserName }) => {
@@ -56,8 +56,17 @@ test.describe("tests with recovering default user password", () => {
     await expect(page).toHaveTitle('plst4 - Log in');
   });
 
-  test("invalid password", async ({ page, browserName }) => {
-    const acc = new TestAccount('recover-default-password-invalid', browserName, 'default-password');
+  test("blank password", async ({ page, browserName }) => {
+    const acc = new TestAccount('recover-default-password-blank', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('contain 8-64 characters')");
+  });
+
+  test("short password", async ({ page, browserName }) => {
+    const acc = new TestAccount('recover-default-password-short', browserName, 'default-password');
     await acc.register(page);
     await submitForgotPassEmail(page, acc);
     await page.goto(await getRecoverLink(acc));
@@ -78,6 +87,28 @@ test.describe("tests with recovering default user password", () => {
     await page.waitForSelector(".error > .toast-wrapper > p:has-text('Passwords do not match')");
   });
 
+  test("invalid password", async ({ page, browserName }) => {
+    const acc = new TestAccount('recover-default-password-invalid', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
+    await page.getByLabel("Password", { exact: true }).fill('{}{}{}{}');
+    await page.getByLabel("Confirm password").fill('{}{}{}{}');
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('contain 8-64 characters')");
+  })
+
+  test("long password", async ({ page, browserName }) => {
+    const acc = new TestAccount('recover-default-password-long', browserName, 'default-password');
+    await acc.register(page);
+    await submitForgotPassEmail(page, acc);
+    await page.goto(await getRecoverLink(acc));
+    await page.getByLabel("Password", { exact: true }).fill('a'.repeat(100));
+    await page.getByLabel("Confirm password").fill('a'.repeat(100));
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('contain 8-64 characters')");
+  });
+
   test("wrong code", async ({ page, browserName }) => {
     const acc = new TestAccount('recover-default-password-link', browserName, 'default-password');
     await acc.register(page);
@@ -89,6 +120,26 @@ test.describe("tests with recovering default user password", () => {
   test("wrong email", async ({ page, browserName }) => {
     await page.goto(`/auth/resetpassword?code=wrongcode&email=${browserName}@plst.dev.wrong.email`);
     await page.waitForSelector("h1:has-text('Reset password error')");
-  })
+  });
+
+  test("blank email recover", async ({ page }) => {
+    await page.goto("/auth/recover");
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('Invalid email.')");
+  });
+
+  test("invalid email recover", async ({ page }) => {
+    await page.goto("/auth/recover");
+    await page.getByLabel("Email").fill(`invalid email desu`);
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('Invalid email.')");
+  });
+
+  test("unavailable email recover", async ({ page }) => {
+    await page.goto("/auth/recover");
+    await page.getByLabel("Email").fill(`no.one.has@this.email`);
+    await page.getByRole('button', { name: "Continue" }).click();
+    await page.waitForSelector(".error > .toast-wrapper > p:has-text('No such account with that email address.')");
+  });
 });
 
