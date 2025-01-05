@@ -43,7 +43,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 func SetAuthCookie(c *gin.Context, signedToken string, timeout time.Duration) {
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(AUTH_COOKIE_NAME, signedToken, int(timeout.Seconds()), "", "", true, true)
+	c.SetCookie(AUTH_COOKIE_NAME, signedToken, int(timeout.Seconds()), "", "", !gin.IsDebugging(), true)
 }
 
 func Logout(c *gin.Context) {
