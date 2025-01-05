@@ -1,9 +1,9 @@
-export type MediaChangePayload = { type: "none" } | {
-  type: "yt",
+export type NullableMediaChangePayload = { type: "none" } | MediaChangePayload;
+export type MediaChangePayload = {
+  type: "yt" | "testvideo" | "testaudio"
   url: string
   aspectRatio: string
 }
-
 export type SocketMsg = {
   type: "handshake" | "swap" | "event"
   payload: string

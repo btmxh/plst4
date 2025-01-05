@@ -34,9 +34,16 @@ func WebSocketRouter(g *gin.RouterGroup) {
 			}
 			defer tx.Rollback()
 
-			if services.NotifyMediaChanged(tx, playlist, socketId) {
+			callback, hasErr := services.NotifyMediaChanged(tx, playlist, socketId)
+			if hasErr {
 				return
 			}
+
+			if tx.Commit() {
+				return
+			}
+
+			callback()
 
 			for {
 				var msg services.WebSocketMsg

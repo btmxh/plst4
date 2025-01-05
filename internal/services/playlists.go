@@ -178,46 +178,43 @@ func GetCurrentMedia(tx *db.Tx, playlist int) (itemId sql.NullInt32, hasErr bool
 	return itemId, hasErr
 }
 
-func PlaylistUpdateCurrent(tx *db.Tx, handler errs.ErrorHandler, playlist int, sign, sortOrder string) (hasErr bool) {
+func PlaylistUpdateCurrent(tx *db.Tx, handler errs.ErrorHandler, playlist int, sign, sortOrder string) (callback func(), hasErr bool) {
 	var currentOrder int
 
 	var hasRow bool
 	var current sql.NullInt32
 	if tx.QueryRow("SELECT current FROM playlists WHERE id = $1", playlist).Scan(nil, &current) {
-		return true
+		return nil, true
 	}
 
 	if !current.Valid {
 		handler.PublicError(http.StatusNotFound, NoCurrentMediaError)
-		return true
+		return nil, true
 	}
 
 	if tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", current).Scan(nil, &currentOrder) {
-		return true
+		return nil, true
 	}
 
 	var next int
 	if tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 AND item_order "+sign+" $2 ORDER BY item_order "+sortOrder, playlist, currentOrder).Scan(&hasRow, &next) {
-		return true
+		return nil, true
 	}
 	if !hasRow {
 		if tx.QueryRow("SELECT id FROM playlist_items WHERE playlist = $1 ORDER BY item_order "+sortOrder, playlist).Scan(nil, &next) {
-			return true
+			return nil, true
 		}
 	}
 
 	if SetCurrentMedia(tx, playlist, sql.NullInt32{Int32: int32(next), Valid: true}) {
-		return true
+		return nil, true
 	}
 
-	if NotifyMediaChanged(tx, playlist, "") {
-		return true
-	}
-
-	return false
+	callback, hasErr = NotifyMediaChanged(tx, playlist, "")
+	return callback, hasErr
 }
 
-func SendNextRequest(tx *db.Tx, handler errs.ErrorHandler, playlist int, username string) bool {
+func SendNextRequest(tx *db.Tx, handler errs.ErrorHandler, playlist int, username string) (callback func(), hasErr bool) {
 	if p, ok := manager.playlists[playlist]; ok {
 		p.nextRequested[username] = struct{}{}
 
@@ -227,7 +224,7 @@ func SendNextRequest(tx *db.Tx, handler errs.ErrorHandler, playlist int, usernam
 			}
 
 			if _, ok := p.nextRequested[username]; !ok {
-				return false
+				return func() {}, false
 			}
 		}
 
@@ -238,7 +235,7 @@ func SendNextRequest(tx *db.Tx, handler errs.ErrorHandler, playlist int, usernam
 		return PlaylistUpdateCurrent(tx, handler, playlist, ">", "ASC")
 	}
 
-	return false
+	return func() {}, false
 }
 
 func GetPlaylistOwner(tx *db.Tx, playlist int) (owner string, hasErr bool) {
@@ -293,5 +290,5 @@ func AddPlaylistManager(tx *db.Tx, playlist int, username string) (hasErr bool) 
 }
 
 func DeletePlaylistManager(tx *db.Tx, playlist int, username string) (hasErr bool) {
-  return tx.Exec(nil, "DELETE FROM playlist_manage WHERE playlist = $1 AND username = $2", playlist, username)
+	return tx.Exec(nil, "DELETE FROM playlist_manage WHERE playlist = $1 AND username = $2", playlist, username)
 }

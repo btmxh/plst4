@@ -26,17 +26,18 @@ func SetMediaAltMetadata(tx *db.Tx, title, artist string, playlist, media int) (
 	return tx.Exec(nil, "INSERT INTO alt_metadata (playlist, media, alt_title, alt_artist) VALUES ($1, $2, $3, $4) ON CONFLICT (playlist, media) DO UPDATE SET alt_title = excluded.alt_title, alt_artist = excluded.alt_artist", playlist, media, title, artist)
 }
 
-func NotifyMediaChanged(tx *db.Tx, playlist int, socketId string) bool {
+func NotifyMediaChanged(tx *db.Tx, playlist int, socketId string) (callback func(), hasErr bool) {
 	var payload MediaChangedPayload
 	var hasRow bool
 	if tx.QueryRow("SELECT m.media_type, m.url, m.aspect_ratio FROM playlists p JOIN playlist_items i ON p.current = i.id JOIN medias m ON m.id = i.media WHERE p.id = $1", playlist).Scan(&hasRow, &payload.Type, &payload.Url, &payload.AspectRatio) {
-		return true
+		return nil, true
 	}
 
 	if !hasRow {
 		payload.Type = media.MediaKindNone
 	}
 
-	WebSocketMediaChange(playlist, socketId, payload)
-	return false
+	return func() {
+		WebSocketMediaChange(playlist, socketId, payload)
+	}, false
 }

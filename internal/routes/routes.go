@@ -35,6 +35,7 @@ func CreateMainRouter() http.Handler {
 	// for source map only
 	if gin.Mode() != gin.ReleaseMode {
 		router.Static("/www", "./www")
+		router.Static("/testmedias", "./www/testmedias")
 	}
 
 	return router

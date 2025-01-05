@@ -46,7 +46,8 @@ func DefaultFuncMap() template.FuncMap {
 		},
 		"FormatTimestampUTC": func(t time.Time) template.HTML {
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
-			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.Local().UTC().Format(time.RFC3339) + "\"></span>")
+			defaultFormat := t.UTC().Format("02/01/2006, 15:04:05 UTC")
+			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.Local().UTC().Format(time.RFC3339) + "\">" + defaultFormat + "</span>")
 		},
 		"FormatDuration": func(d time.Duration) string {
 			hours := int(d / time.Hour)

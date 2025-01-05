@@ -1,13 +1,18 @@
 @use "./vars.scss" as vars;
 
-#video-player {
-  .video-player-wrapper {
+#media-player {
+  .media-player-wrapper {
     display: none;
 
     &.show {
       display: block;
       width: 100%;
       aspect-ratio: 16/9;
+    }
+
+    video, audio {
+      width: 100%;
+      height: 100%;
     }
   }
 }

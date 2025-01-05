@@ -113,10 +113,10 @@
       </label>
       <span class="playlist-utilities">
         <a href="{{$item.URL}}" target="_blank">link</a>
-        <button type="button" class="link-button" onclick="copyPrevLink(event)">copy</button>
+        <button role="link" type="button" class="link-button" onclick="copyPrevLink(event)">copy</button>
         {{if $isManager}}
-        <input class="link-button" type="submit" hx-patch="/watch/{{$playlistId}}/queue/goto/{{$item.Id}}" value="goto"
-          hx-params='pih-{{$item.Id}},index,state-hash,.preserve' hx-swap="none">
+        <input role="link" class="link-button" type="submit" hx-patch="/watch/{{$playlistId}}/queue/goto/{{$item.Id}}"
+          value="goto" hx-params='pih-{{$item.Id}},index,state-hash,.preserve' hx-swap="none">
         {{end}}
       </span>
     </div>
@@ -192,9 +192,15 @@
     hx-target="closest main" hx-swap="outerHTML" data-playlist={{.Id}}>
     <input id="websocket-id-input" type="hidden" name="websocket-id" value="">
     <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
-    <article id="video-player">
-      <div id="youtube-video-player-wrapper" class="video-player-wrapper">
+    <article id="media-player">
+      <div id="youtube-video-player-wrapper" class="media-player-wrapper">
         <div id="#youtube-video-player"></div>
+      </div>
+      <div id="test-video-player-wrapper" class="media-player-wrapper">
+        <video id="test-video-player" preload="none" src="" controls></video>
+      </div>
+      <div id="test-audio-player-wrapper" class="media-player-wrapper">
+        <audio id="test-audio-player" preload="none" src="" controls></audio>
       </div>
     </article>
     <aside class="playlist-details">

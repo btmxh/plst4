@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/btmxh/plst4/internal/html"
+	"github.com/btmxh/plst4/internal/middlewares"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,5 +28,17 @@ func ToastRouter(g *gin.RouterGroup) {
 	})
 	g.GET("/info/long", func(c *gin.Context) {
 		Toast(c, html.ToastInfo, "Test info message", "Hello, World!Hello, World!Hello, World!Hello, World!Hello, World!Hello, World!")
+	})
+}
+
+func ToastErrorMiddleware() gin.HandlerFunc {
+	return middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		Toast(c, html.ToastError, title, desc)
+	})
+}
+
+func RenderErrorMiddleware() gin.HandlerFunc {
+	return middlewares.ErrorMiddleware(func(c *gin.Context, title, desc template.HTML) {
+		html.RenderError(c, title, desc)
 	})
 }

@@ -51,4 +51,25 @@ export class TestAccount {
 
     await expect(page).toHaveTitle('plst4 - Log in');
   }
+
+  async login(page: Page) {
+    await page.goto('/auth/login');
+    await page.getByLabel("Username").fill(this.username);
+    await page.getByLabel("Password").fill(this.password);
+    await page.getByRole('button', { name: "Continue" }).click();
+    await expect(page).toHaveTitle('plst4 - Home');
+  }
+}
+
+export const clearToasts = async (page: Page) => {
+  await page.evaluate(() => {
+    document.querySelectorAll(".toast-wrapper").forEach(elm => (elm as HTMLElement).click());
+  });
+};
+
+export const TestMedia = {
+  "v5s360p": "http://localhost:6972/testmedias/5s360p.mp4",
+  "v10s360p": "http://localhost:6972/testmedias/10s360p.mp4",
+  "v1m360p": "http://localhost:6972/testmedias/1m360p.mp4",
+  "videos": "http://localhost:6972/testmedias/videos.mp4.json",
 };

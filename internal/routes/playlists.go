@@ -29,7 +29,7 @@ var playlistWatchTmpl = getTemplate("watch", "templates/playlists/watch.tmpl")
 var playlistWatchInvalidTmpl = getTemplate("watch", "templates/playlists/watch_invalid.tmpl")
 var playlistQueryResult = getTemplate("playlist_query_result", "templates/playlists/playlist_query_result.tmpl")
 
-var playlistNameRegex = regexp.MustCompile(`^[a-zA-Z0-9 ]{4,100}$`)
+var playlistNameRegex = regexp.MustCompile(`^.{4,100}$`)
 var noCurrentMediaError = errors.New("No currently playing media.")
 var invalidItemError = errors.New("Invalid playlist item ID.")
 var invalidFormData = errors.New("Invalid form data.")
@@ -74,7 +74,13 @@ func getCheckedItems(c *gin.Context, handler errs.ErrorHandler) (ids []int, hasE
 func WatchRouter(g *gin.RouterGroup) {
 	g.GET("/", html.RenderGinFunc(watchTemplate, "layout", gin.H{}))
 
+	watchPageRouter := g.Group("/:id/")
+	watchPageRouter.Use(RenderErrorMiddleware())
+	watchPageRouter.Use(middlewares.PlaylistIdMiddleware())
+	watchPageRouter.GET("/", playlistWatch)
+
 	idGroup := g.Group("/:id/")
+	idGroup.Use(ToastErrorMiddleware())
 	idGroup.Use(middlewares.PlaylistIdMiddleware())
 
 	loggedInGroup := idGroup.Group("")
@@ -86,7 +92,6 @@ func WatchRouter(g *gin.RouterGroup) {
 	ownerGroup := loggedInGroup.Group("")
 	ownerGroup.Use(middlewares.OwnerCheckMiddleware())
 
-	idGroup.GET("/", playlistWatch)
 	idGroup.GET("/controller", playlistWatchController)
 	managerGroup.POST("/controller/submit", playlistSubmitMetadata)
 	ownerGroup.PATCH("/controller/rename", func(c *gin.Context) {
@@ -109,7 +114,7 @@ func WatchRouter(g *gin.RouterGroup) {
 	managerGroup.POST("/queue/next", playlistNext)
 	managerGroup.POST("/queue/up", playlistMoveUp)
 	managerGroup.POST("/queue/down", playlistMoveDown)
-	managerGroup.GET("/managers", playlistManagers)
+	idGroup.GET("/managers", playlistManagers)
 	ownerGroup.POST("/managers/add", playlistManagerAdd)
 	ownerGroup.DELETE("/managers/delete", playlistManagerDelete)
 
@@ -118,6 +123,7 @@ func WatchRouter(g *gin.RouterGroup) {
 func PlaylistRouter(g *gin.RouterGroup) {
 	g.GET("/search", search)
 	mustAuth := g.Group("")
+	mustAuth.Use(ToastErrorMiddleware())
 	mustAuth.Use(middlewares.MustAuthMiddleware())
 	mustAuth.POST("/new", newPlaylist)
 	mustAuth.PATCH("/:id/rename", func(c *gin.Context) {
@@ -194,7 +200,7 @@ func search(c *gin.Context) {
 func newPlaylist(c *gin.Context) {
 	handler := errs.NewGinErrorHandler(c, "New playlist error")
 	name, err := HxPrompt(c)
-	if err != nil || playlistNameRegex.MatchString(name) {
+	if err != nil || !playlistNameRegex.MatchString(name) {
 		if err != nil {
 			handler.PrivateError(err)
 		}
@@ -284,11 +290,6 @@ func playlistWatch(c *gin.Context) {
 		return
 	}
 
-	if !hasRow {
-		html.RenderGin(playlistWatchInvalidTmpl, c, "layout", gin.H{})
-		return
-	}
-
 	if tx.Commit() {
 		return
 	}
@@ -341,11 +342,11 @@ func playlistRenderQueue(c *gin.Context, playlist int, pageNum int) {
 		"IsManager": isManager,
 	}
 
-	if page.NextPage >= 0 {
-		args["PrevPage"] = page.NextPage
+	if page.NextOffset >= 0 {
+		args["NextPage"] = page.NextPage
 	}
-	if page.PrevPage >= 0 {
-		args["NextPage"] = page.PrevPage
+	if page.PrevOffset >= 0 {
+		args["PrevPage"] = page.PrevPage
 	}
 
 	html.RenderGin(playlistWatchTmpl, c, "queue", args)
@@ -566,7 +567,7 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 	if pos != services.QueueNext {
 		var minOrder int
 		var maxOrder int
-		if tx.QueryRow("SELECT MIN(item_order), MAX(item_order) FROM playlist_items WHERE playlist = $1", playlist).Scan(&hasRow, &minOrder, &maxOrder) {
+		if tx.QueryRow("SELECT COALESCE(MIN(item_order), 0), COALESCE(MAX(item_order), 0) FROM playlist_items WHERE playlist = $1", playlist).Scan(&hasRow, &minOrder, &maxOrder) {
 			return
 		}
 
@@ -586,15 +587,21 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 		if hasErr {
 			return msg, true
 		}
-		_, nextOrder, hasRow, hasErr = services.GetNextPlaylistItem(tx, prevOrder)
+
+		slog.Info("Adding playlist item between...", "prev", prev, "prev_order", prevOrder)
+		var next int
+		next, nextOrder, hasRow, hasErr = services.GetNextPlaylistItem(tx, playlist, prevOrder)
 		if hasErr {
 			return msg, true
 		}
 
 		if !hasRow {
-			begin = prevOrder
+			slog.Info("and nothing!")
 			delta = services.PlaylistAddOrderGap
+			begin = prevOrder + delta
 		} else {
+			slog.Info("and...", "next", next, "next_order", nextOrder)
+			slog.Info("local rebalancing", "playlist", playlist, "prev_order", prevOrder, "next_order", nextOrder, "prev", prev, "next", next, "len", len(mediaIds))
 			begin, delta, hasErr = services.LocalRebalance(tx, playlist, prevOrder, nextOrder, prev, len(mediaIds))
 			if hasErr {
 				return msg, true
@@ -602,6 +609,7 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 		}
 	}
 
+	slog.Info("Adding media to playlist", "playlist", playlist, "mediaIds", mediaIds, "begin", begin, "delta", delta)
 	if _, hasErr = services.AddPlaylistItems(tx, playlist, mediaIds, begin, delta); hasErr {
 		return
 	}
@@ -646,7 +654,14 @@ func playlistAdd(c *gin.Context) {
 
 		Toast(c, html.ToastInfo, "Media added successfully", msg)
 	} else {
-		go playlistResolveAndAdd(context.Background(), services.NewWebSocketErrorHandler("Unable to add media to playlist", wsId), id, canonInfo, pos)
+		go func() {
+			msg, hasErr := playlistResolveAndAdd(context.Background(), services.NewWebSocketErrorHandler("Unable to add media to playlist", wsId), id, canonInfo, pos)
+			if hasErr {
+				return
+			}
+
+			services.WebSocketToast(wsId, html.ToastInfo, "Media added successfully", msg)
+		}()
 		Toast(c, html.ToastInfo, "Adding new media", template.HTML(template.HTMLEscapeString(fmt.Sprintf("Adding media with URL %s to playlist...", url))))
 	}
 }
@@ -679,7 +694,8 @@ func playlistGoto(c *gin.Context) {
 		return
 	}
 
-	if services.NotifyMediaChanged(nil, id, "") {
+	callback, hasErr := services.NotifyMediaChanged(tx, id, "")
+	if hasErr {
 		return
 	}
 
@@ -687,6 +703,7 @@ func playlistGoto(c *gin.Context) {
 		return
 	}
 
+	callback()
 }
 
 func playlistItemsDelete(c *gin.Context) {
@@ -715,8 +732,15 @@ func playlistItemsDelete(c *gin.Context) {
 		return
 	}
 
+	callback := func() {
+		services.WebSocketPlaylistEvent(id, services.PlaylistChanged)
+	}
 	if current.Valid && slices.Contains(items, int(current.Int32)) {
-		if services.SetCurrentMedia(tx, id, sql.NullInt32{}) || services.NotifyMediaChanged(nil, id, "") {
+		if services.SetCurrentMedia(tx, id, sql.NullInt32{}) {
+			return
+		}
+		callback, hasErr = services.NotifyMediaChanged(tx, id, "")
+		if hasErr {
 			return
 		}
 	}
@@ -725,7 +749,7 @@ func playlistItemsDelete(c *gin.Context) {
 		return
 	}
 
-	services.WebSocketPlaylistEvent(id, services.PlaylistChanged)
+	callback()
 	Toast(c, html.ToastInfo, "Playlist items removed", template.HTML(template.HTMLEscapeString(fmt.Sprintf("%d item(s) are removed from the playlist", len(items)))))
 }
 
@@ -775,7 +799,8 @@ func playlistNextRequest(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	if services.SendNextRequest(tx, handler, id, stores.GetUsername(c)) {
+	callback, hasErr := services.SendNextRequest(tx, handler, id, stores.GetUsername(c))
+	if hasErr {
 		return
 	}
 
@@ -783,7 +808,11 @@ func playlistNextRequest(c *gin.Context) {
 		Toast(c, html.ToastInfo, "Next request sent", "Successfully sent next request")
 	}
 
-	tx.Commit()
+	if tx.Commit() {
+		return
+	}
+
+	callback()
 }
 
 func playlistPrev(c *gin.Context) {
@@ -796,9 +825,14 @@ func playlistPrev(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	services.PlaylistUpdateCurrent(tx, handler, id, "<", "DESC")
+	callback, hasErr := services.PlaylistUpdateCurrent(tx, handler, id, "<", "DESC")
+	if hasErr {
+		return
+	}
 
 	tx.Commit()
+
+	callback()
 }
 
 func playlistNext(c *gin.Context) {
@@ -811,9 +845,14 @@ func playlistNext(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	services.PlaylistUpdateCurrent(tx, handler, id, ">", "ASC")
+	callback, hasErr := services.PlaylistUpdateCurrent(tx, handler, id, ">", "ASC")
+	if hasErr {
+		return
+	}
 
 	tx.Commit()
+
+	callback()
 }
 
 func playlistManagers(c *gin.Context) {

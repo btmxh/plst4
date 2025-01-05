@@ -64,7 +64,7 @@ func EnumeratePlaylistItems(tx *db.Tx, playlist int, pageNum int) (page Paginati
 		return page, true
 	}
 
-	for rows.Next() {
+	for index := offset; rows.Next(); index += 1 {
 		var item QueuePlaylistItem
 		var duration time.Duration
 		err := rows.Scan(&item.Id, &item.Title, &item.Artist, &item.URL, &duration)
@@ -73,8 +73,7 @@ func EnumeratePlaylistItems(tx *db.Tx, playlist int, pageNum int) (page Paginati
 			return page, true
 		}
 		item.Duration = time.Duration(duration) * time.Second
-		item.Index = offset
-		offset += 1
+		item.Index = index
 		items = append(items, item)
 	}
 
@@ -91,7 +90,7 @@ func LocalRebalance(tx *db.Tx, playlist int, startOrder int, endOrder int, befor
 			return begin, delta, true
 		}
 
-		if endOrder-startOrder+1 >= beta*(numInsertions+count) {
+		if endOrder-startOrder >= beta*(numInsertions+count) {
 			break
 		}
 
@@ -105,9 +104,11 @@ func LocalRebalance(tx *db.Tx, playlist int, startOrder int, endOrder int, befor
 		return begin, delta, true
 	}
 
-	delta = (endOrder - startOrder + 1) / (numInsertions + count)
-	if tx.Exec(nil,
-		`
+	delta = (endOrder - startOrder) / (numInsertions + count - 1)
+	if count > 2 {
+		slog.Info("Local rebalancing with", "startOrder", startOrder, "endOrder", endOrder, "beforeItem", beforeItem, "beforeItemOrder", beforeItemOrder, "numInsertions", numInsertions, "count", count, "delta", delta)
+		if tx.Exec(nil,
+			`
 		WITH RankedRows AS (
 			SELECT
 				item_order,
@@ -117,19 +118,22 @@ func LocalRebalance(tx *db.Tx, playlist int, startOrder int, endOrder int, befor
 		), UpdatedRows AS (
 			SELECT
 				item_order,
-				($2 + $3 * (i - 1) + IF(item_order > $4, $3 * $5, 0)) AS new_order
+				($2 + $4 * (i - 1) + (CASE WHEN (item_order > $5) THEN ($4 * $6) ELSE 0 END)) AS new_order
 			FROM RankedRows
 		)
 		UPDATE playlist_items
 		SET item_order = UpdatedRows.new_order
 		FROM UpdatedRows
 		WHERE playlist_items.item_order = UpdatedRows.item_order AND playlist = $1
-		`, playlist, startOrder, delta, beforeItemOrder, numInsertions) {
-		return begin, delta, true
-	}
+		`, playlist, startOrder, endOrder, delta, beforeItemOrder, numInsertions) {
+			return begin, delta, true
+		}
 
-	if tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", beforeItem).Scan(nil, &beforeItemOrder) {
-		return begin, delta, true
+		if tx.QueryRow("SELECT item_order FROM playlist_items WHERE id = $1", beforeItem).Scan(nil, &beforeItemOrder) {
+			return begin, delta, true
+		}
+	} else {
+		slog.Info("Skipping local rebalancing due to insufficient items", "count", count, "startOrder", startOrder, "endOrder", endOrder, "beforeItem", beforeItem, "beforeItemOrder", beforeItemOrder, "numInsertions", numInsertions, "delta", delta)
 	}
 
 	begin = beforeItemOrder + delta
@@ -162,13 +166,14 @@ func GetPlaylistItemOrder(tx *db.Tx, id int) (order int, hasErr bool) {
 	return order, hasErr || !hasRow
 }
 
-func GetNextPlaylistItem(tx *db.Tx, prevOrder int) (order int, id int, hasRow, hasErr bool) {
-	hasErr = tx.QueryRow("SELECT id, item_order FROM playlist_items WHERE item_order > $1", prevOrder).Scan(&hasRow, &id, &order)
-	return order, id, hasRow, hasErr
+func GetNextPlaylistItem(tx *db.Tx, playlist, prevOrder int) (id int, order int, hasRow, hasErr bool) {
+	hasErr = tx.QueryRow("SELECT id, item_order FROM playlist_items WHERE item_order > $1 AND playlist = $2 ORDER BY item_order ASC LIMIT 1", prevOrder, playlist).Scan(&hasRow, &id, &order)
+	return id, order, hasRow, hasErr
 }
 
 func CheckPlaylistItemExists(tx *db.Tx, playlist, id int) (hasRow bool, hasErr bool) {
-	hasErr = tx.QueryRow("SELECT 1 FROM playlist_items WHERE id = $1 AND playlist = $2", id, playlist).Scan(&hasRow)
+	var dummy int
+	hasErr = tx.QueryRow("SELECT 1 FROM playlist_items WHERE id = $1 AND playlist = $2", id, playlist).Scan(&hasRow, &dummy)
 	return hasRow, hasErr
 }
 

@@ -20,6 +20,7 @@ func PlaylistIdMiddleware() gin.HandlerFunc {
 
 		if id == "" {
 			handler.PublicError(http.StatusUnprocessableEntity, InvalidPlaylistIdError)
+			ctx.Abort()
 			return
 		}
 
@@ -27,6 +28,7 @@ func PlaylistIdMiddleware() gin.HandlerFunc {
 		if err != nil {
 			handler.PrivateError(err)
 			handler.PublicError(http.StatusUnprocessableEntity, InvalidPlaylistIdError)
+			ctx.Abort()
 			return
 		}
 
@@ -41,15 +43,18 @@ func PlaylistIdMiddleware() gin.HandlerFunc {
 		var dummy int
 		var hasRow bool
 		if tx.QueryRow("SELECT 1 FROM playlists WHERE id = $1", idInt).Scan(&hasRow, &dummy) {
+			ctx.Abort()
 			return
 		}
 
 		if !hasRow {
 			handler.PublicError(http.StatusNotFound, InvalidPlaylistIdError)
+			ctx.Abort()
 			return
 		}
 
 		if tx.Commit() {
+			ctx.Abort()
 			return
 		}
 
