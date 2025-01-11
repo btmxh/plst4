@@ -721,24 +721,31 @@ func playlistItemsDelete(c *gin.Context) {
 		return
 	}
 
-	for _, item := range items {
-		if services.DeletePlaylistItem(tx, id, item) {
-			return
-		}
-	}
-
 	current, hasErr := services.GetCurrentMedia(tx, id)
 	if hasErr {
 		return
 	}
 
+	currentMediaChanged := false
+	for _, item := range items {
+		if current.Valid && int(current.Int32) == item {
+			if services.SetCurrentMedia(tx, id, sql.NullInt32{}) {
+				return
+			}
+
+			current.Valid = false
+			currentMediaChanged = true
+		}
+
+		if services.DeletePlaylistItem(tx, id, item) {
+			return
+		}
+	}
+
 	callback := func() {
 		services.WebSocketPlaylistEvent(id, services.PlaylistChanged)
 	}
-	if current.Valid && slices.Contains(items, int(current.Int32)) {
-		if services.SetCurrentMedia(tx, id, sql.NullInt32{}) {
-			return
-		}
+	if currentMediaChanged {
 		callback, hasErr = services.NotifyMediaChanged(tx, id, "")
 		if hasErr {
 			return
