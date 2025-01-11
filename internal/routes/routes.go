@@ -7,6 +7,7 @@ import (
 
 	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/middlewares"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,6 +17,7 @@ func getTemplate(name string, paths ...string) *template.Template {
 
 func CreateMainRouter() http.Handler {
 	router := gin.Default()
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middlewares.AuthMiddleware())
 
 	router.GET("/", HomeRouter)

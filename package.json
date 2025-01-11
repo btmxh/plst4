@@ -5,9 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev-ts": "swc www/scripts -d dist/ --strip-leading-paths --watch",
-    "build-ts": "swc www/scripts -d dist/ --strip-leading-paths",
+    "build-ts": "swc www/scripts -d dist/ --strip-leading-paths --config-file .prod.swcrc",
     "dev-scss": "sass www/styles:dist/styles --watch",
-    "build-scss": "sass www/styles:dist/styles",
+    "build-scss": "sass www/styles:dist/styles --style compressed --no-source-map",
     "dev-go": "air",
     "build-go": "go build -o plst4 cmd/plst4/main.go",
     "dev": "concurrently npm:dev-ts npm:dev-scss npm:dev-go"
