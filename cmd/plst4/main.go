@@ -44,6 +44,7 @@ func main() {
 		panic(err)
 	}
 	defer db.CloseDB()
+	slog.Info("Database connection initialized")
 
 	if err = mailer.InitMailer(); err != nil {
 		panic(err)
@@ -59,8 +60,19 @@ func main() {
 		slog.Info("PLST4_ADDR not provided, using default '" + addr + "'")
 	}
 
+	cert, hasCert := os.LookupEnv("HTTPS_CERT_FILE")
+	key, hasKey := os.LookupEnv("HTTPS_KEY_FILE")
+
 	router := routes.CreateMainRouter()
-	err = http.ListenAndServe(addr, router)
+
+	if hasKey && hasCert {
+		slog.Info("Starting HTTPS server", slog.String("addr", addr), slog.String("cert", cert), slog.String("key", key))
+		err = http.ListenAndServeTLS(addr, cert, key, router)
+	} else {
+		slog.Info("Starting HTTP server", slog.String("addr", addr))
+		err = http.ListenAndServe(addr, router)
+	}
+
 	if err != nil {
 		panic(err)
 	}
