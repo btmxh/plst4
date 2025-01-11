@@ -9,7 +9,7 @@
     "dev-scss": "sass www/styles:dist/styles --watch",
     "build-scss": "sass www/styles:dist/styles",
     "dev-go": "air",
-    "build-go": "go build cmd/plst4/main.go -o plst4",
+    "build-go": "go build -o plst4 cmd/plst4/main.go",
     "dev": "concurrently npm:dev-ts npm:dev-scss npm:dev-go"
   },
   "keywords": [],
