@@ -10,6 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var useCDN = false
+
+func SetUseCDN(use bool) {
+	useCDN = use
+}
+
 func StringAsHTML(s string) template.HTML {
 	return template.HTML(template.HTMLEscapeString(s))
 }
@@ -24,7 +30,7 @@ func CombineArgs(args ...gin.H) gin.H {
 
 func RenderGin(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(c.Writer, block, CombineArgs(gin.H{"Context": c}, arg)); err != nil {
+	if err := tmpl.ExecuteTemplate(c.Writer, block, CombineArgs(gin.H{"Context": c, "UseCDN": useCDN}, arg)); err != nil {
 		c.Error(err).SetType(gin.ErrorTypeRender)
 		return
 	}

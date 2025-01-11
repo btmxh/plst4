@@ -8,6 +8,7 @@ import (
 
 	"github.com/btmxh/plst4/internal/auth"
 	"github.com/btmxh/plst4/internal/db"
+	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/mailer"
 	"github.com/btmxh/plst4/internal/routes"
 	"github.com/joho/godotenv"
@@ -20,6 +21,8 @@ func main() {
 		fmt.Println("Unable to load .env file: %w", err)
 		os.Exit(1)
 	}
+
+	html.SetUseCDN(os.Getenv("USE_CDN") == "true")
 
 	logLevel := slog.LevelDebug
 	if levelStr, ok := os.LookupEnv("LOG_LEVEL"); ok {

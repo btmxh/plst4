@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/url"
+	"os"
 	"regexp"
 	"time"
 
@@ -134,7 +135,7 @@ func SendRecoveryEmail(tx *db.Tx, email *mail.Address) (hasErr bool) {
 	}
 
 	identifier := uniuri.New()
-	hostname := "http://localhost:6972"
+	hostname := os.Getenv("HOSTNAME")
 	go func() {
 		err := mailer.SendMailTemplated(email, "Recover your plst4 account", recoverEmailTmpl, hostname+"/auth/resetpassword?code="+identifier+"&email="+url.QueryEscape(email.Address))
 		if err != nil {

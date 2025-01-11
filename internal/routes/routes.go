@@ -2,8 +2,11 @@ package routes
 
 import (
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 
 	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/middlewares"
@@ -17,7 +20,14 @@ func getTemplate(name string, paths ...string) *template.Template {
 
 func CreateMainRouter() http.Handler {
 	router := gin.Default()
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	gzipMode, err := strconv.Atoi(os.Getenv("GZIP_MODE"))
+	if err != nil {
+		slog.Warn("Invalid value for GZIP_MODE environment variable", "err", err)
+		gzipMode = 0
+	}
+
+	router.Use(gzip.Gzip(gzipMode))
 	router.Use(middlewares.AuthMiddleware())
 
 	router.GET("/", HomeRouter)
