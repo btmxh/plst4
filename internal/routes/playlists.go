@@ -632,7 +632,7 @@ func playlistAdd(c *gin.Context) {
 	handler := errs.NewGinErrorHandler(c, "Playlist add error")
 	id := stores.GetPlaylistId(c)
 
-	pos, err := services.ParsePlaylistAddPosition(c.PostForm("add-position"))
+	pos, err := services.ParsePlaylistAddPosition(c.PostForm("position"))
 	if err != nil {
 		handler.PublicError(http.StatusUnprocessableEntity, err)
 		return
