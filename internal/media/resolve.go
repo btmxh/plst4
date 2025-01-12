@@ -3,17 +3,19 @@ package media
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
+const UnknownTitle string = "<unknown title>"
 const UnknownArtist string = "<unknown artist>"
 
 type MediaResolveInfo struct {
-	Title    string
-	Artist   string
-	Duration time.Duration
+	Title       string
+	Artist      string
+	Duration    time.Duration
 	AspectRatio string
-	Metadata []byte
+	Metadata    []byte
 }
 
 type MediaListEntry struct {
@@ -31,8 +33,13 @@ func ResolveMedia(ctx context.Context, info *MediaCanonicalizeInfo) (*MediaResol
 	switch info.Kind {
 	case MediaKindYoutube:
 		return YTResolveMedia(ctx, info.Url)
+	case MediaKindTestVideo:
+		return TestResolveMedia(ctx, info.Url)
+	case MediaKindTestAudio:
+		return TestResolveMedia(ctx, info.Url)
 	}
 
+	slog.Warn("reach here?", "info", info)
 	return nil, fmt.Errorf("Unsupported media kind")
 }
 

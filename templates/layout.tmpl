@@ -9,7 +9,13 @@
   <link rel="stylesheet" href="/styles/reset.css" type="text/css">
   <link rel="stylesheet" href="/styles/common.css" type="text/css">
   <link rel="stylesheet" href="/styles/toast.css" type="text/css">
+  {{if .UseCDN}}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/2.0.4/htmx.esm.min.js"
+    integrity="sha512-AT/LY/QMPnebIZYGLC9A+5f3QNedsp1eZ1CV5FMjfk7ZsnLw3uc8BUy88CZLuNZwEIC2Dnv60kHXjaKSVckkww=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" type="module"></script>
+  {{else}}
   <script src="/libs/htmx.min.js" type="module"></script>
+  {{end}}
   <script src="/scripts/navbar.js" type="module" defer></script>
   <script src="/scripts/toast.js" type="module" defer></script>
   <script src="/scripts/timestamp.js" type="module" defer></script>

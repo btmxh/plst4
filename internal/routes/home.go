@@ -8,5 +8,5 @@ import (
 var homeTemplate = getTemplate("home", "templates/home.tmpl")
 
 func HomeRouter(c *gin.Context) {
-	html.Render(homeTemplate, c, "layout", gin.H{})
+	html.RenderGin(homeTemplate, c, "layout", gin.H{})
 }

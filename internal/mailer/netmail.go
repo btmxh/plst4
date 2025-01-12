@@ -3,6 +3,7 @@ package mailer
 import (
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/mail"
 	"os"
 	"strconv"
@@ -29,5 +30,12 @@ func (mailer *NetMailer) SendMail(to *mail.Address, subject string, body templat
 	m.SetHeader("From", "plst4@plst.dev")
 	m.SetHeader("To", to.Address)
 	m.SetBody("text/html", string(body))
-	return mailer.Dealer.DialAndSend(m)
+	go func() {
+		if err := mailer.Dealer.DialAndSend(m); err != nil {
+			slog.Error("Failed to send netmail", "err", err, slog.String("to", to.Address), slog.String("subject", subject))
+		} else {
+			slog.Info("Net mail sent", slog.String("to", to.Address), slog.String("subject", subject))
+		}
+	}()
+	return nil
 }

@@ -6,9 +6,15 @@ import (
 	"maps"
 	"time"
 
-	"github.com/btmxh/plst4/internal/auth"
+	"github.com/btmxh/plst4/internal/stores"
 	"github.com/gin-gonic/gin"
 )
+
+var useCDN = false
+
+func SetUseCDN(use bool) {
+	useCDN = use
+}
 
 func StringAsHTML(s string) template.HTML {
 	return template.HTML(template.HTMLEscapeString(s))
@@ -22,31 +28,32 @@ func CombineArgs(args ...gin.H) gin.H {
 	return all
 }
 
-func Render(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
+func RenderGin(tmpl *template.Template, c *gin.Context, block string, arg gin.H) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(c.Writer, block, CombineArgs(gin.H{"Context": c}, arg)); err != nil {
+	if err := tmpl.ExecuteTemplate(c.Writer, block, CombineArgs(gin.H{"Context": c, "UseCDN": useCDN}, arg)); err != nil {
 		c.Error(err).SetType(gin.ErrorTypeRender)
 		return
 	}
 }
 
-func RenderFunc(tmpl *template.Template, block string, arg gin.H) gin.HandlerFunc {
+func RenderGinFunc(tmpl *template.Template, block string, arg gin.H) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		Render(tmpl, c, block, arg)
+		RenderGin(tmpl, c, block, arg)
 	}
 }
 
 func DefaultFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"HasUsername": func(c *gin.Context) bool {
-			return auth.IsLoggedIn(c)
+			return stores.IsLoggedIn(c)
 		},
 		"GetUsername": func(c *gin.Context) string {
-			return auth.GetUsername(c)
+			return stores.GetUsername(c)
 		},
 		"FormatTimestampUTC": func(t time.Time) template.HTML {
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
-			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.Local().UTC().Format(time.RFC3339) + "\"></span>")
+			defaultFormat := t.UTC().Format("02/01/2006, 15:04:05 UTC")
+			return template.HTML("<span class=\"timestamp\" data-value=\"" + t.Local().UTC().Format(time.RFC3339) + "\">" + defaultFormat + "</span>")
 		},
 		"FormatDuration": func(d time.Duration) string {
 			hours := int(d / time.Hour)
@@ -66,4 +73,9 @@ func DefaultFuncMap() template.FuncMap {
 			}
 		},
 	}
+}
+
+func GetTemplate(name string, paths ...string) *template.Template {
+	paths = append(paths, "templates/layout.tmpl")
+	return template.Must(template.New(name).Funcs(DefaultFuncMap()).ParseFiles(paths...))
 }

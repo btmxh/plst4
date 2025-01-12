@@ -1,0 +1,9 @@
+{
+  "title": "Test video playlist",
+  "artist": "Artist 102",
+  "mediaPaths": [
+    "http://localhost:6972/testmedias/5s360p.mp4",
+    "http://localhost:6972/testmedias/10s360p.mp4",
+    "http://localhost:6972/testmedias/1m360p.mp4"
+  ]
+}

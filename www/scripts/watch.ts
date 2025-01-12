@@ -1,7 +1,9 @@
 import htmx from "htmx.org";
-import { MediaChangePayload, Plst4Socket } from "./websocket.js";
+import { MediaChangePayload, NullableMediaChangePayload, Plst4Socket } from "./websocket.js";
 import { Youtube } from "./players/youtube.js";
 import { Player } from "./players/player.js";
+import { TestVideoPlayer } from "./players/testvideo.js";
+import { TestAudioPlayer } from "./players/testaudio.js";
 
 (window as any).copyPrevInput = (e: MouseEvent) => {
   let elm = e.currentTarget as HTMLElement;
@@ -40,14 +42,16 @@ const socket = new Plst4Socket((msg) => {
 
 const players = {
   "yt": new Youtube(),
+  "testvideo": new TestVideoPlayer(),
+  "testaudio": new TestAudioPlayer(),
 } satisfies Record<string, Player>;
 
-const handleMediaChange = (payload: MediaChangePayload) => {
+const handleMediaChange = (payload: NullableMediaChangePayload) => {
   for (const [key, player] of Object.entries(players)) {
     player.stop();
     if (key === payload.type) {
       player.show();
-      player.start(payload);
+      player.start(payload as MediaChangePayload);
     } else {
       player.hide();
     }

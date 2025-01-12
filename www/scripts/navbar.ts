@@ -9,6 +9,11 @@ const toggle = () => document.querySelectorAll(".navbar").forEach(n => n.classLi
 const threshold = 500; //ms
 let lastPress: number | undefined = undefined;
 document.addEventListener("keydown", ev => {
+  const target = ev.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) {
+    return;
+  }
+
   if (ev.key !== " ") {
     lastPress = undefined;
     return;

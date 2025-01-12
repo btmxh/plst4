@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"net/http"
 
 	"github.com/btmxh/plst4/internal/errs"
-	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
 
@@ -15,7 +15,15 @@ var GenericError = errors.New("Unable to access database")
 
 type Tx struct {
 	transaction *sql.Tx
-	context     *gin.Context
+	handler     errs.ErrorHandler
+}
+
+func (tx *Tx) PublicError(statusCode int, err error) {
+	tx.handler.PublicError(statusCode, err)
+}
+
+func (tx *Tx) PrivateError(err error) {
+	tx.handler.PrivateError(err)
 }
 
 type QueryRow struct {
@@ -29,25 +37,25 @@ func InitDB(connStr string) error {
 	return err
 }
 
-func DatabaseError(c *gin.Context, err error) {
-	errs.PrivateError(c, err)
-	errs.PublicError(c, GenericError)
+func DatabaseError(handler errs.ErrorHandler, err error) {
+	handler.PrivateError(err)
+	handler.PublicError(http.StatusInternalServerError, GenericError)
 }
 
-func BeginTx(c *gin.Context) *Tx {
+func BeginTx(handler errs.ErrorHandler) *Tx {
 	tx, err := DB.Begin()
 	if err != nil {
-		DatabaseError(c, err)
+		DatabaseError(handler, err)
 		return nil
 	}
 
-	return &Tx{transaction: tx, context: c}
+	return &Tx{transaction: tx, handler: handler}
 }
 
 func (tx *Tx) Exec(result *sql.Result, query string, args ...any) (hasErr bool) {
 	res, err := tx.transaction.Exec(query, args...)
 	if err != nil {
-		DatabaseError(tx.context, err)
+		DatabaseError(tx.handler, err)
 		return true
 	}
 
@@ -61,7 +69,7 @@ func (tx *Tx) Exec(result *sql.Result, query string, args ...any) (hasErr bool) 
 func (tx *Tx) Query(rows **sql.Rows, query string, args ...any) (hasErr bool) {
 	r, err := tx.transaction.Query(query, args...)
 	if err != nil {
-		DatabaseError(tx.context, err)
+		DatabaseError(tx.handler, err)
 		return true
 	}
 
@@ -78,9 +86,9 @@ func (tx *Tx) QueryRow(query string, args ...any) *QueryRow {
 
 func (row *QueryRow) Scan(hasRow *bool, dest ...any) (hasErr bool) {
 	err := row.row.Scan(dest...)
-	hasErr = err != nil && err != sql.ErrNoRows
+	hasErr = err != nil && (hasRow == nil || err != sql.ErrNoRows)
 	if hasErr {
-		DatabaseError(row.tx.context, err)
+		DatabaseError(row.tx.handler, err)
 	}
 	if hasRow != nil {
 		*hasRow = err == nil
@@ -95,7 +103,7 @@ func (tx *Tx) Rollback() {
 func (tx *Tx) Commit() (hasErr bool) {
 	err := tx.transaction.Commit()
 	if err != nil {
-		DatabaseError(tx.context, err)
+		DatabaseError(tx.handler, err)
 		return true
 	}
 

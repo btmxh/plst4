@@ -1,4 +1,3 @@
-import htmx from "htmx.org";
 import { MediaChangePayload } from "../websocket.js";
 import { Player, waitUntilDefined } from "./player.js";
 
@@ -36,16 +35,7 @@ export class Youtube extends Player {
             },
             onStateChange: (state) => {
               if (state.data === YT.PlayerState.ENDED) {
-                const form = new FormData();
-                form.set("quiet", "true")
-                fetch(`/watch/${(document.querySelector("main") as HTMLElement).dataset.playlist}/queue/nextreq`, {
-                  method: "post",
-                  body: form,
-                }).then(res => res.text()).then(res => htmx.swap("body", res, {
-                  swapStyle: "none",
-                  swapDelay: 100,
-                  settleDelay: 20,
-                }))
+                this.nextRequest();
               }
             },
             onError: (err) => {
