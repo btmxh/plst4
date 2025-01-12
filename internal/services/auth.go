@@ -88,7 +88,7 @@ func Register(tx *db.Tx, email *mail.Address, username, password string) (hasErr
 }
 
 func LogIn(tx *db.Tx, username, password string) (signedToken string, timeout time.Duration, hasErr bool) {
-	timeout = 12 * time.Hour
+	timeout = 30 * 24 * time.Hour
 
 	var hasRow bool
 	var hashed string
