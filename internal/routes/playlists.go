@@ -126,12 +126,15 @@ func PlaylistRouter(g *gin.RouterGroup) {
 	mustAuth.Use(ToastErrorMiddleware())
 	mustAuth.Use(middlewares.MustAuthMiddleware())
 	mustAuth.POST("/new", newPlaylist)
-	mustAuth.PATCH("/:id/rename", func(c *gin.Context) {
+
+	idGroup := mustAuth.Group("/:id/")
+	idGroup.Use(middlewares.PlaylistIdMiddleware())
+	idGroup.PATCH("/rename", func(c *gin.Context) {
 		if _, hasErr := playlistRenameCommon(c); !hasErr {
 			HxRefresh(c)
 		}
 	})
-	mustAuth.DELETE("/:id/delete", func(c *gin.Context) {
+	idGroup.DELETE("/delete", func(c *gin.Context) {
 		if !playlistDeleteCommon(c) {
 			HxRefresh(c)
 		}
@@ -234,7 +237,7 @@ func playlistRenameCommon(c *gin.Context) (title string, hasErr bool) {
 	id := stores.GetPlaylistId(c)
 
 	name, err := HxPrompt(c)
-	if err != nil || playlistNameRegex.MatchString(name) {
+	if err != nil || !playlistNameRegex.MatchString(name) {
 		if err != nil {
 			handler.PrivateError(err)
 		}
