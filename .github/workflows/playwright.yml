@@ -16,7 +16,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
     - name: Install ffprobe (needed for testing)
-      run: sudo apt update && sudo apt install -y ffprobe
+      run: sudo apt update && sudo apt install -y ffmpeg
     - name: Set up air and golang-migrate
       run: |
         go install github.com/air-verse/air@latest
