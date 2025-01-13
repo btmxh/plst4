@@ -339,7 +339,7 @@ func playlistRenderQueue(c *gin.Context, playlist int, pageNum int) {
 	args := gin.H{
 		"Id":        playlist,
 		"Items":     page.Items,
-		"ThisPage":  pageNum,
+		"ThisPage":  page.Page,
 		"Current":   currentId,
 		"Owner":     owner,
 		"IsManager": isManager,
