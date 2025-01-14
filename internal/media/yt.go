@@ -181,7 +181,7 @@ func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) 
 		return nil, err
 	}
 
-	response, err := client.Videos.List([]string{"snippet", "player"}).Id(id).MaxResults(1).Do()
+	response, err := client.Videos.List([]string{"snippet", "player", "contentDetails"}).Id(id).MaxResults(1).Do()
 	if err != nil {
 		return nil, err
 	}
