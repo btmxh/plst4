@@ -181,7 +181,7 @@ func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) 
 		return nil, err
 	}
 
-	response, err := client.Videos.List([]string{"snippet", "player", "contentDetails"}).Id(id).MaxResults(1).Do()
+	response, err := client.Videos.List([]string{"snippet", "player"}).Id(id).MaxResults(1).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +201,7 @@ func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) 
 		Title:       video.Snippet.Title,
 		Artist:      video.Snippet.ChannelTitle,
 		Duration:    isoDurationToGoDuration(videoLength),
-		AspectRatio: fmt.Sprintf("%d/%d", video.Player.EmbedWidth, video.Player.EmbedHeight),
+		AspectRatio: "16/9",
 		Metadata:    nil,
 	}, nil
 }
