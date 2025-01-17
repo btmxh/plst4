@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/btmxh/plst4/internal/db"
-	"github.com/btmxh/plst4/internal/media"
 )
 
 type QueuePlaylistItem struct {
@@ -150,10 +149,6 @@ func AddPlaylistItems(tx *db.Tx, playlist int, mediaIds []int, beginOrder, delta
 	}
 
 	return ids, false
-}
-
-func AddToPlaylist(tx *db.Tx, playlist int, canonInfo media.MediaCanonicalizeInfo, pos PlaylistAddPosition) (hasErr bool) {
-	return false
 }
 
 func GetPlaylistItemOrder(tx *db.Tx, id int) (order int, hasErr bool) {

@@ -485,72 +485,50 @@ func playlistWatchController(c *gin.Context) {
 	html.RenderGin(playlistWatchTmpl, c, "controller", args)
 }
 
-func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playlist int, canonInfo *media.MediaCanonicalizeInfo, pos services.PlaylistAddPosition) (msg template.HTML, hasErr bool) {
+func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playlist int, mediaObj media.MediaObject, pos services.PlaylistAddPosition) (msg template.HTML, hasErr bool) {
+	isSingle := true
+	canonMedia, err := mediaObj.Canonicalize(ctx)
+	if err != nil {
+		handler.PublicError(http.StatusUnprocessableEntity, err)
+		return msg, true
+	}
+
 	tx := db.BeginTx(handler)
 	if tx == nil {
 		return
 	}
 	defer tx.Rollback()
 
-	var title string
-	var artist string
+	var resolvedMedia media.ResolvedMediaObject
+	resolvedMedia, hasRow, hasErr := services.GetResolvedMedia(tx, canonMedia.URL().String())
 	var mediaIds []int
-
-	addMedias := func(medias []media.MediaListEntry) (hasErr bool) {
-		for _, media := range medias {
-			id, hasRow, hasErr := services.GetMediaId(tx, media.CanonInfo.Url)
-			if hasErr {
-				return true
-			}
-
-			if hasRow {
-				mediaIds = append(mediaIds, id)
-				continue
-			}
-
-			if id, hasErr := services.AddMedia(tx, media); !hasErr {
-				mediaIds = append(mediaIds, id)
-			} else {
-				return true
-			}
-		}
-
-		return false
+	if hasErr {
+		return msg, true
 	}
 
-	if canonInfo.Multiple {
-		mediaList, err := media.ResolveMediaList(ctx, canonInfo)
+	if !hasRow {
+		resolvedMedia, err = canonMedia.Resolve(ctx)
 		if err != nil {
 			handler.PublicError(http.StatusUnprocessableEntity, err)
 			return msg, true
 		}
 
-		title = mediaList.Title
-		artist = mediaList.Artist
-		if addMedias(mediaList.Medias) {
-			return msg, true
-		}
-	} else {
-		var id int
-		var hasRow bool
-		id, title, artist, hasRow, hasErr = services.GetMediaSimpleInfo(tx, canonInfo.Url)
-
-		if hasErr {
-			return msg, true
-		}
-
-		if hasRow {
-			mediaIds = append(mediaIds, id)
-		} else {
-			info, err := media.ResolveMedia(ctx, canonInfo)
-			if err != nil {
-				handler.PublicError(http.StatusUnprocessableEntity, err)
+		var resolvedMediaSingle media.ResolvedMediaObjectSingle
+		resolvedMediaSingle, isSingle = resolvedMedia.(media.ResolvedMediaObjectSingle)
+		if isSingle {
+			if id, hasErr := services.AddMedia(tx, resolvedMediaSingle); !hasErr {
+				mediaIds = append(mediaIds, id)
+			} else {
 				return msg, true
 			}
-
-			addMedias([]media.MediaListEntry{{CanonInfo: canonInfo, ResolveInfo: info}})
-			title = info.Title
-			artist = info.Artist
+		} else {
+			for _, media := range resolvedMedia.ChildEntries() {
+				if id, hasErr := services.AddMedia(tx, media); !hasErr {
+					mediaIds = append(mediaIds, id)
+				} else {
+					return msg, true
+				}
+			}
 		}
 	}
 
@@ -564,7 +542,6 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 		}
 	}
 
-	var hasRow bool
 	var begin int
 	delta := services.PlaylistAddOrderGap
 	if pos != services.QueueNext {
@@ -621,10 +598,10 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 		return
 	}
 
-	if canonInfo.Multiple {
-		msg = html.StringAsHTML(fmt.Sprintf("Media %s - %s added to playlist", title, artist))
+	if isSingle {
+		msg = html.StringAsHTML(fmt.Sprintf("Media list %s - %s added to playlist", resolvedMedia.Title(), resolvedMedia.Artist()))
 	} else {
-		msg = html.StringAsHTML(fmt.Sprintf("Media list %s - %s added to playlist", title, artist))
+		msg = html.StringAsHTML(fmt.Sprintf("Media %s - %s added to playlist", resolvedMedia.Title(), resolvedMedia.Artist()))
 	}
 
 	services.WebSocketPlaylistEvent(playlist, services.PlaylistChanged)
@@ -642,7 +619,7 @@ func playlistAdd(c *gin.Context) {
 	}
 
 	url := c.PostForm("url")
-	canonInfo, err := media.CanonicalizeMedia(url)
+	canonInfo, err := media.ProcessURL(url)
 	if err != nil {
 		handler.PublicError(http.StatusUnprocessableEntity, err)
 		return
