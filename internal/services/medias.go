@@ -67,7 +67,7 @@ func (o *DatabaseResolvedMediaObject) AspectRatio() string {
 func GetResolvedMedia(tx *db.Tx, url string) (m media.ResolvedMediaObjectSingle, hasRow, hasErr bool) {
 	var obj DatabaseResolvedMediaObject
 	obj.url = url
-	hasErr = tx.QueryRow("SELECT media_type, title, artist, duration, url, aspect_ratio FROM medias WHERE url = $1", url).Scan(&hasRow, &obj.kind, &obj.title, &obj.artist, &obj.length, &obj.aspectRatio)
+	hasErr = tx.QueryRow("SELECT media_type, title, artist, duration, aspect_ratio FROM medias WHERE url = $1", url).Scan(&hasRow, &obj.kind, &obj.title, &obj.artist, &obj.length, &obj.aspectRatio)
 	return &obj, hasRow, hasErr
 }
 
