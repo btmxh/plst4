@@ -79,7 +79,7 @@ func GetMediaSimpleInfo(tx *db.Tx, url string) (id int, title, artist string, ha
 func AddMedia(tx *db.Tx, entry media.ResolvedMediaObjectSingle) (id int, hasErr bool) {
 	hasErr = tx.QueryRow(`
 		WITH ins AS
-		(INSERT INTO medias (media_type, title, artist, duration, url, aspect_ratio) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (url) DO NOTHING) RETURNING id)
+		(INSERT INTO medias (media_type, title, artist, duration, url, aspect_ratio) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (url) DO NOTHING RETURNING id)
 		SELECT id FROM ins
 		UNION ALL
     SELECT id FROM medias WHERE url = $5
