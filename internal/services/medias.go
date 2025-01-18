@@ -84,7 +84,7 @@ func AddMedia(tx *db.Tx, entry media.ResolvedMediaObjectSingle) (id int, hasErr 
 		UNION ALL
     SELECT id FROM medias WHERE url = $5
 		LIMIT 1`,
-		string(entry.Kind()), entry.Title(), entry.Artist(), int(entry.Duration().Seconds()), entry.URL(), entry.AspectRatio()).Scan(nil, &id)
+		string(entry.Kind()), entry.Title(), entry.Artist(), int(entry.Duration().Seconds()), entry.URL().String(), entry.AspectRatio()).Scan(nil, &id)
 	return id, hasErr
 }
 
