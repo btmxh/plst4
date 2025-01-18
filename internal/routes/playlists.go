@@ -530,6 +530,17 @@ func playlistResolveAndAdd(ctx context.Context, handler errs.ErrorHandler, playl
 				}
 			}
 		}
+	} else {
+		id, hasRow, hasErr := services.GetMediaId(tx, canonMedia.URL().String())
+		if hasErr {
+			return msg, true
+		}
+
+		if !hasRow {
+			panic("should not happen")
+		}
+
+		mediaIds = []int{id}
 	}
 
 	var current sql.NullInt32
