@@ -94,7 +94,7 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
          FROM playlists 
          WHERE POSITION($1 IN LOWER(name)) > 0 
-         ORDER BY created_timestamp 
+         ORDER BY created_timestamp DESC
          LIMIT $2 OFFSET $3`,
 			query, DefaultPagingLimit+1, offset,
 		)
