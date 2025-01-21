@@ -46,7 +46,7 @@ func ResolveMedia(ctx context.Context, info *MediaCanonicalizeInfo) (*MediaResol
 func ResolveMediaList(ctx context.Context, info *MediaCanonicalizeInfo) (*MediaListResolveInfo, error) {
 	switch info.Kind {
 	case MediaKindYoutube:
-		return YTResolveMediaList(ctx, info.Url)
+		return YTDLResolveMediaList(ctx, info.Url)
 	}
 
 	return nil, fmt.Errorf("Unsupported media kind")

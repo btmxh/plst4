@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/senseyeio/duration"
 	"github.com/wader/goutubedl"
+	"google.golang.org/api/option"
+	"google.golang.org/api/youtube/v3"
 )
 
 type YoutubeURLType int
@@ -126,7 +130,7 @@ func mediaInfoFromYT(info *goutubedl.Info) *MediaResolveInfo {
 	return &MediaResolveInfo{Title: title, Artist: artist, Duration: duration, AspectRatio: aspectRatio, Metadata: metadata}
 }
 
-func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) {
+func YTDLResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) {
 	slog.Debug("Resolving media", "url", url)
 	result, err := goutubedl.New(ctx, url, goutubedl.Options{})
 	if err != nil {
@@ -136,7 +140,7 @@ func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) 
 	return mediaInfoFromYT(&result.Info), nil
 }
 
-func YTResolveMediaList(ctx context.Context, url string) (*MediaListResolveInfo, error) {
+func YTDLResolveMediaList(ctx context.Context, url string) (*MediaListResolveInfo, error) {
 	result, err := goutubedl.New(ctx, url, goutubedl.Options{})
 	if err != nil {
 		return nil, err
@@ -150,4 +154,54 @@ func YTResolveMediaList(ctx context.Context, url string) (*MediaListResolveInfo,
 	}
 
 	return listInfo, nil
+}
+
+func isoDurationToGoDuration(d duration.Duration) time.Duration {
+	return time.Duration(d.Y)*time.Hour*24*365 +
+		time.Duration(d.M)*time.Hour*24*30 +
+		time.Duration(d.W)*time.Hour*24*7 +
+		time.Duration(d.D)*time.Hour*24 +
+		time.Duration(d.TH)*time.Hour +
+		time.Duration(d.TM)*time.Minute +
+		time.Duration(d.TS)*time.Second
+}
+
+func YTResolveMedia(ctx context.Context, url string) (*MediaResolveInfo, error) {
+	id, hasPrefix := strings.CutPrefix(url, "https://youtu.be/")
+	if !hasPrefix {
+		return nil, fmt.Errorf("URL does not start with https://youtu.be/")
+	}
+
+	if !checkVideoId(id) {
+		return nil, fmt.Errorf("Invalid YouTube video ID")
+	}
+
+	client, err := youtube.NewService(ctx, option.WithAPIKey(os.Getenv("YOUTUBE_API_KEY")))
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := client.Videos.List([]string{"snippet", "player", "contentDetails"}).Id(id).MaxResults(1).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Items) == 0 {
+		return nil, fmt.Errorf("No video found for ID %s", id)
+	}
+
+	video := response.Items[0]
+
+	videoLength, err := duration.ParseISO8601(video.ContentDetails.Duration)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MediaResolveInfo{
+		Title:       video.Snippet.Title,
+		Artist:      video.Snippet.ChannelTitle,
+		Duration:    isoDurationToGoDuration(videoLength),
+		AspectRatio: "16/9",
+		Metadata:    nil,
+	}, nil
 }
