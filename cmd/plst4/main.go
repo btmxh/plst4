@@ -10,6 +10,7 @@ import (
 	"github.com/btmxh/plst4/internal/db"
 	"github.com/btmxh/plst4/internal/html"
 	"github.com/btmxh/plst4/internal/mailer"
+	"github.com/btmxh/plst4/internal/media"
 	"github.com/btmxh/plst4/internal/routes"
 	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
@@ -23,6 +24,7 @@ func main() {
 	}
 
 	html.SetUseCDN(os.Getenv("USE_CDN") == "true")
+	media.InitMediaSources()
 
 	logLevel := slog.LevelDebug
 	if levelStr, ok := os.LookupEnv("LOG_LEVEL"); ok {
