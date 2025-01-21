@@ -34,7 +34,7 @@ func checkPlaylistId(id string) bool {
 }
 
 func videoURL(id string) *url.URL {
-	u, err := url.Parse("https://youtu.be/%s" + id)
+	u, err := url.Parse("https://youtu.be/" + id)
 	if err != nil {
 		panic("unexpected URL parse error")
 	}
@@ -272,7 +272,7 @@ func (yt *YoutubeAPI) ResolveMedia(ctx context.Context, id string) (ResolvedMedi
 		return nil, err
 	}
 
-	response, err := client.Videos.List([]string{"snippet", "part", "contentDetails"}).Id(id).MaxResults(1).Do()
+	response, err := client.Videos.List([]string{"snippet", "contentDetails"}).Id(id).MaxResults(1).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
 		return nil, ErrUnsupportedURL
 	}
 
-	if path == "/watch" {
+	if path == "watch" {
 		id := query.Get("v")
 		if !checkVideoId(id) {
 			return nil, ErrInvalidYTURL
@@ -380,7 +380,7 @@ func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
 		return newYoutubeVideo(resolver, id, nil), nil
 	}
 
-	if path == "/playlist" {
+	if path == "playlist" {
 		id := query.Get("list")
 		if !checkPlaylistId(id) {
 			return nil, ErrInvalidYTURL
