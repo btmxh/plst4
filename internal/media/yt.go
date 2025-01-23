@@ -340,7 +340,7 @@ func (yt *YoutubeDL) ResolveMediaList(ctx context.Context, id string) (ResolvedM
 	var videos []YoutubeVideoResolveInfo
 	for _, video := range result.Info.Entries {
 		videos = append(videos, YoutubeVideoResolveInfo{
-			id:          id,
+			id:          video.ID,
 			title:       video.Title,
 			artist:      video.Channel,
 			length:      time.Duration(video.Duration) * time.Second,
