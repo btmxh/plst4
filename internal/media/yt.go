@@ -1,10 +1,13 @@
 package media
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -332,10 +335,39 @@ func (yt *YoutubeDL) ResolveMedia(ctx context.Context, id string) (ResolvedMedia
 }
 
 func (yt *YoutubeDL) ResolveMediaList(ctx context.Context, id string) (ResolvedMediaObject, error) {
-	result, err := fetchYTDL(ctx, playlistURL(id).String())
+	url := playlistURL(id).String()
+
+	cmd := exec.CommandContext(
+		ctx,
+		goutubedl.ProbePath(),
+		"--ignore-errors",
+		"--no-call-home",
+		"--restrict-filenames",
+		"--netrc",
+		"--batch-file", "-",
+		"--flat-playlist", // https://github.com/wader/goutubedl/issues/224
+		"--dump-single-json",
+		url,
+	)
+
+	stdout := &bytes.Buffer{}
+	cmd.Stdout = stdout
+
+	err := cmd.Run()
 	if err != nil {
 		return nil, err
 	}
+
+	var result goutubedl.Result
+	err = json.Unmarshal(stdout.Bytes(), &result.Info)
+	if err != nil {
+		return nil, err
+	}
+
+	// result, err := fetchYTDL(ctx, playlistURL(id).String())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	var videos []YoutubeVideoResolveInfo
 	for _, video := range result.Info.Entries {
