@@ -8,6 +8,10 @@ export class TestVideoPlayer extends Player {
     super();
     this.player = document.querySelector("video#test-video-player")!;
     this.player.addEventListener("ended", () => this.nextRequest());
+    this.player.addEventListener("error", (evt) => {
+      console.debug("Video player error", evt);
+      this.nextRequest();
+    });
   }
 
   play() {

@@ -39,7 +39,8 @@ export class Youtube extends Player {
               }
             },
             onError: (err) => {
-              console.error(err);
+              console.debug("YouTube embed player error", err);
+              this.nextRequest();
             }
           }
         })

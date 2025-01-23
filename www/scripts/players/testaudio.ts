@@ -8,6 +8,10 @@ export class TestAudioPlayer extends Player {
     super();
     this.player = document.querySelector("audio#test-audio-player")!;
     this.player.addEventListener("ended", () => this.nextRequest());
+    this.player.addEventListener("error", (evt) => {
+      console.debug("Audio player error", evt);
+      this.nextRequest();
+    });
   }
 
   play() {
