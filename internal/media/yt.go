@@ -3,34 +3,32 @@ package media
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/senseyeio/duration"
-	"github.com/wader/goutubedl"
 	"google.golang.org/api/option"
 	"google.golang.org/api/youtube/v3"
 )
 
-func checkId(s string) bool {
-	for _, r := range s {
-		suitable := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
-		if !suitable {
-			return false
-		}
+func NewYoutubeYtdlResolver() *YtdlResolver {
+	return &YtdlResolver{
+		mediaUrlPattern:     "https://youtu.be/%s",
+		mediaListUrlPattern: "https://www.youtube.com/playlist?list=%s",
+		searchPrefix:        "ytsearch1:",
 	}
-
-	return true
 }
 
+var idRegex = regexp.MustCompile("^[a-zA-Z0-9_-]+$")
+
 func checkVideoId(id string) bool {
-	return len(id) == 11 && checkId(id)
+	return len(id) == 11 && idRegex.MatchString(id)
 }
 
 func checkPlaylistId(id string) bool {
-	return checkId(id)
+	return idRegex.MatchString(id)
 }
 
 func videoURL(id string) *url.URL {
@@ -65,113 +63,17 @@ const MediaKindYoutube MediaKind = "yt"
 
 var ErrInvalidYTURL = errors.New("Invalid YouTube URL")
 
-type YoutubeVideoResolveInfo struct {
-	id          string
-	title       string
-	artist      string
-	length      time.Duration
-	aspectRatio string
-}
-
-func (v *YoutubeVideoResolveInfo) Kind() MediaKind {
-	return MediaKindYoutube
-}
-
-func (v *YoutubeVideoResolveInfo) Canonicalize(_ context.Context) (CanonicalizedMediaObject, error) {
-	return v, nil
-}
-
-func (v *YoutubeVideoResolveInfo) URL() *url.URL {
-	return videoURL(v.id)
-}
-
-func (v *YoutubeVideoResolveInfo) Resolve(_ context.Context) (ResolvedMediaObject, error) {
-	return v, nil
-}
-
-func (v *YoutubeVideoResolveInfo) Title() string {
-	return v.title
-}
-
-func (v *YoutubeVideoResolveInfo) Artist() string {
-	return v.artist
-}
-
-func (v *YoutubeVideoResolveInfo) ChildEntries() []ResolvedMediaObjectSingle {
-	return nil
-}
-
-func (v *YoutubeVideoResolveInfo) Duration() time.Duration {
-	return v.length
-}
-
-func (v *YoutubeVideoResolveInfo) AspectRatio() string {
-	return v.aspectRatio
-}
-
-type YoutubePlaylistResolveInfo struct {
-	title  string
-	artist string
-	videos []YoutubeVideoResolveInfo
-}
-
-type YoutubeVideo struct {
-	resolver    YoutubeResolver
-	id          string
-	resolveInfo *YoutubeVideoResolveInfo
-}
-
-func newYoutubeVideo(resolver YoutubeResolver, id string, resolveInfo *YoutubeVideoResolveInfo) *YoutubeVideo {
-	return &YoutubeVideo{resolver: resolver, id: id, resolveInfo: resolveInfo}
-}
-
-func (v *YoutubeVideo) Kind() MediaKind {
-	return MediaKindYoutube
-}
-
-func (v *YoutubeVideo) Canonicalize(ctx context.Context) (CanonicalizedMediaObject, error) {
-	return v, nil
-}
-
-func (v *YoutubeVideo) URL() *url.URL {
-	return videoURL(v.id)
-}
-
-func (v *YoutubeVideo) Resolve(ctx context.Context) (ResolvedMediaObject, error) {
-	if v.resolveInfo == nil {
-		return v.resolver.ResolveMedia(ctx, v.id)
-	} else {
-		return v, nil
-	}
-}
-
-func (v *YoutubeVideo) Title() string {
-	return v.resolveInfo.Title()
-}
-
-func (v *YoutubeVideo) Artist() string {
-	return v.resolveInfo.Artist()
-}
-
-func (v *YoutubeVideo) Duration() time.Duration {
-	return v.resolveInfo.Duration()
-}
-
-func (v *YoutubeVideo) AspectRatio() string {
-	return v.resolveInfo.AspectRatio()
-}
-
-func (v *YoutubeVideo) ChildEntries() []ResolvedMediaObjectSingle {
-	return v.resolveInfo.ChildEntries()
+type YoutubeSource struct {
+	resolver YoutubeResolver
 }
 
 type YoutubeVideoQuery struct {
-	resolver YoutubeResolver
-	query    string
+	source *YoutubeSource
+	query  string
 }
 
-func newYoutubeVideoQuery(resolver YoutubeResolver, query string) *YoutubeVideoQuery {
-	return &YoutubeVideoQuery{resolver: resolver, query: query}
+func newYoutubeVideoQuery(src *YoutubeSource, query string) *YoutubeVideoQuery {
+	return &YoutubeVideoQuery{source: src, query: query}
 }
 
 func (v *YoutubeVideoQuery) Kind() MediaKind {
@@ -179,74 +81,24 @@ func (v *YoutubeVideoQuery) Kind() MediaKind {
 }
 
 func (v *YoutubeVideoQuery) Canonicalize(ctx context.Context) (CanonicalizedMediaObject, error) {
-	return v.resolver.SearchMedia(ctx, v.query)
+	return v.source.resolver.SearchMedia(v.source, ctx, v.query)
 }
 
-type YoutubePlaylist struct {
-	resolver    YoutubeResolver
-	id          string
-	resolveInfo *YoutubePlaylistResolveInfo
-}
-
-func newYoutubePlaylist(resolver YoutubeResolver, id string, resolveInfo *YoutubePlaylistResolveInfo) *YoutubePlaylist {
-	return &YoutubePlaylist{resolver: resolver, id: id, resolveInfo: resolveInfo}
-}
-
-func (v *YoutubePlaylist) Kind() MediaKind {
-	return MediaKindYoutube
-}
-
-func (v *YoutubePlaylist) Canonicalize(ctx context.Context) (CanonicalizedMediaObject, error) {
-	return v, nil
-}
-
-func (v *YoutubePlaylist) URL() *url.URL {
-	return playlistURL(v.id)
-}
-
-func (v *YoutubePlaylist) Resolve(ctx context.Context) (ResolvedMediaObject, error) {
-	if v.resolveInfo == nil {
-		return v.resolver.ResolveMediaList(ctx, v.id)
-	} else {
-		return v, nil
-	}
-}
-
-func (v *YoutubePlaylist) Title() string {
-	return v.resolveInfo.title
-}
-
-func (v *YoutubePlaylist) Artist() string {
-	return v.resolveInfo.artist
-}
-
-func (v *YoutubePlaylist) ChildEntries() (videos []ResolvedMediaObjectSingle) {
-	for _, video := range v.resolveInfo.videos {
-		videos = append(videos, &video)
-	}
-	return videos
-}
-
-// two resolvers implementation
 type YoutubeResolver interface {
-	SearchMedia(ctx context.Context, query string) (CanonicalizedMediaObject, error)
-	ResolveMedia(ctx context.Context, id string) (ResolvedMediaObject, error)
-	ResolveMediaList(ctx context.Context, id string) (ResolvedMediaObject, error)
+	SearchMedia(src IdMediaSource[string], ctx context.Context, query string) (CanonicalizedMediaObject, error)
+	ResolveMedia(src IdMediaSource[string], ctx context.Context, id string) (ResolvedMediaObjectSingle, error)
+	ResolveMediaList(src IdMediaSource[string], ctx context.Context, id string) (ResolvedMediaObject, error)
 }
 
 type YoutubeAPI struct {
 	apiKey string
 }
 
-func NewYoutubeAPI(apiKey string) *YoutubeAPI {
-	return &YoutubeAPI{apiKey: apiKey}
-}
-
 func (yt *YoutubeAPI) newClient(ctx context.Context) (*youtube.Service, error) {
 	return youtube.NewService(ctx, option.WithAPIKey(yt.apiKey))
 }
 
-func (yt *YoutubeAPI) SearchMedia(ctx context.Context, query string) (CanonicalizedMediaObject, error) {
+func (yt *YoutubeAPI) SearchMedia(src IdMediaSource[string], ctx context.Context, query string) (CanonicalizedMediaObject, error) {
 	client, err := yt.newClient(ctx)
 	if err != nil {
 		return nil, err
@@ -263,10 +115,10 @@ func (yt *YoutubeAPI) SearchMedia(ctx context.Context, query string) (Canonicali
 
 	video := response.Items[1]
 	id := video.Id.VideoId
-	return newYoutubeVideo(yt, id, nil), nil
+	return NewIdMediaObject[string](src, id, nil), nil
 }
 
-func (yt *YoutubeAPI) ResolveMedia(ctx context.Context, id string) (ResolvedMediaObject, error) {
+func (yt *YoutubeAPI) ResolveMedia(src IdMediaSource[string], ctx context.Context, id string) (ResolvedMediaObjectSingle, error) {
 	client, err := yt.newClient(ctx)
 	if err != nil {
 		return nil, err
@@ -287,7 +139,7 @@ func (yt *YoutubeAPI) ResolveMedia(ctx context.Context, id string) (ResolvedMedi
 		return nil, err
 	}
 
-	return newYoutubeVideo(yt, id, &YoutubeVideoResolveInfo{
+	return NewIdMediaObject[string](src, id, &IdMediaObjectResolveInfo{
 		id:          id,
 		title:       video.Snippet.Title,
 		artist:      video.Snippet.ChannelTitle,
@@ -296,69 +148,12 @@ func (yt *YoutubeAPI) ResolveMedia(ctx context.Context, id string) (ResolvedMedi
 	}), nil
 }
 
-func (yt *YoutubeAPI) ResolveMediaList(ctx context.Context, id string) (ResolvedMediaObject, error) {
+func (yt *YoutubeAPI) ResolveMediaList(src IdMediaSource[string], ctx context.Context, id string) (ResolvedMediaObject, error) {
 	// unsupported due to quota and shit
 	return NewYoutubeDL().ResolveMediaList(ctx, id)
 }
 
-type YoutubeDL struct {
-}
-
-func NewYoutubeDL() *YoutubeDL {
-	return &YoutubeDL{}
-}
-
-func fetchYTDL(ctx context.Context, url string) (goutubedl.Result, error) {
-	return goutubedl.New(ctx, url, goutubedl.Options{})
-}
-
-func (yt *YoutubeDL) SearchMedia(ctx context.Context, query string) (CanonicalizedMediaObject, error) {
-	panic("unsupported")
-}
-
-func (yt *YoutubeDL) ResolveMedia(ctx context.Context, id string) (ResolvedMediaObject, error) {
-	result, err := fetchYTDL(ctx, videoURL(id).String())
-	if err != nil {
-		return nil, err
-	}
-
-	return newYoutubeVideo(yt, id, &YoutubeVideoResolveInfo{
-		id:          id,
-		title:       result.Info.Title,
-		artist:      result.Info.Channel,
-		length:      time.Duration(result.Info.Duration) * time.Second,
-		aspectRatio: fmt.Sprintf("%d/%d", int(result.Info.Width), int(result.Info.Height)),
-	}), nil
-}
-
-func (yt *YoutubeDL) ResolveMediaList(ctx context.Context, id string) (ResolvedMediaObject, error) {
-	result, err := goutubedl.New(ctx, playlistURL(id).String(), goutubedl.Options{
-		Type:         goutubedl.TypePlaylist,
-		FlatPlaylist: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var videos []YoutubeVideoResolveInfo
-	for _, video := range result.Info.Entries {
-		videos = append(videos, YoutubeVideoResolveInfo{
-			id:          video.ID,
-			title:       video.Title,
-			artist:      video.Channel,
-			length:      time.Duration(video.Duration) * time.Second,
-			aspectRatio: "16/9",
-		})
-	}
-
-	return newYoutubePlaylist(yt, id, &YoutubePlaylistResolveInfo{
-		title:  result.Info.Title,
-		artist: result.Info.Channel,
-		videos: videos,
-	}), nil
-}
-
-func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
+func processYoutubeURL(src *YoutubeSource, u *url.URL) (MediaObject, error) {
 	if u.Scheme != "https" && u.Scheme != "http" {
 		return nil, ErrUnsupportedURL
 	}
@@ -380,7 +175,7 @@ func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
 			return nil, ErrInvalidYTURL
 		}
 
-		return newYoutubeVideo(resolver, id, nil), nil
+		return NewIdMediaObject(src, id, nil), nil
 	}
 
 	if path == "playlist" {
@@ -389,11 +184,11 @@ func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
 			return nil, ErrInvalidYTURL
 		}
 
-		return newYoutubePlaylist(resolver, id, nil), nil
+		return NewIdMediaListObject(src, id, nil), nil
 	}
 
 	if checkVideoId(path) {
-		return newYoutubeVideo(resolver, path, nil), nil
+		return NewIdMediaObject(src, path, nil), nil
 	}
 
 	if path != "" {
@@ -401,20 +196,44 @@ func processURL(resolver YoutubeResolver, u *url.URL) (MediaObject, error) {
 	}
 
 	if query.Has("search_query") {
-		return newYoutubeVideoQuery(resolver, query.Get("search_query")), nil
+		return newYoutubeVideoQuery(src, query.Get("search_query")), nil
 	}
 
 	if query.Has("search") {
-		return newYoutubeVideoQuery(resolver, query.Get("search")), nil
+		return newYoutubeVideoQuery(src, query.Get("search")), nil
 	}
 
 	return nil, ErrInvalidYTURL
 }
 
-func (yt *YoutubeDL) ProcessURL(u *url.URL) (MediaObject, error) {
-	return processURL(yt, u)
+func NewYoutubeAPI(apiKey string) *YoutubeSource {
+	return &YoutubeSource{resolver: &YoutubeAPI{apiKey: apiKey}}
 }
 
-func (yt *YoutubeAPI) ProcessURL(u *url.URL) (MediaObject, error) {
-	return processURL(yt, u)
+func NewYoutubeDL() *YoutubeSource {
+	return &YoutubeSource{resolver: NewYoutubeYtdlResolver()}
+}
+
+func (yt *YoutubeSource) ProcessURL(u *url.URL) (MediaObject, error) {
+	return processYoutubeURL(yt, u)
+}
+
+func (yt *YoutubeSource) Kind() MediaKind {
+	return MediaKindYoutube
+}
+
+func (yt *YoutubeSource) MediaURL(id string) *url.URL {
+	return NewYoutubeYtdlResolver().MediaURL(id)
+}
+
+func (yt *YoutubeSource) MediaListURL(id string) *url.URL {
+	return NewYoutubeYtdlResolver().MediaListURL(id)
+}
+
+func (yt *YoutubeSource) ResolveMedia(ctx context.Context, id string) (ResolvedMediaObjectSingle, error) {
+	return yt.resolver.ResolveMedia(yt, ctx, id)
+}
+
+func (yt *YoutubeSource) ResolveMediaList(ctx context.Context, id string) (ResolvedMediaObject, error) {
+	return yt.resolver.ResolveMediaList(yt, ctx, id)
 }

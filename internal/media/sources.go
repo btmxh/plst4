@@ -16,6 +16,7 @@ func InitMediaSources() {
 	}
 
 	mediaSources = append(mediaSources, NewYoutubeDL())
+	mediaSources = append(mediaSources, NewSoundcloud())
 
 	if gin.IsDebugging() {
 		mediaSources = append(mediaSources, NewTestMediaResolver())

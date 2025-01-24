@@ -51,3 +51,4 @@ type ResolvedMediaObjectSingle interface {
 type MediaSource interface {
 	ProcessURL(u *url.URL) (MediaObject, error)
 }
+

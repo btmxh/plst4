@@ -6,17 +6,14 @@
 
     &.show {
       display: block;
-      width: 100%;
-      aspect-ratio: 16/9;
     }
 
-    video, audio {
+    video {
+      aspect-ratio: 16/9;
       width: 100%;
-      height: 100%;
     }
   }
 }
-
 
 .add-section {
   display: flex;
