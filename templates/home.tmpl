@@ -4,13 +4,53 @@
 
 {{define "body"}}
 <main class="main-content medium {{if .ErrorString}}noanim{{end}}" hx-target="closest main" hx-swap="outerHTML">
-  <h1> plst4 - a media player server </h1>
+  <h1 class="centered"> plst4 - a media player server </h1>
+  <hr>
+  <div style="font-size: 1.5em; text-align: center;">
+    <strong>problem</strong>: too many media hosting services
+    <img src="https://imgs.xkcd.com/comics/standards.png" alt="xkcd 927: too many standards">
+    <div style="font-size:0.5em">
+      source: <a href="https://xkcd.com/927/">https://xkcd.com/927/</a>
+    </div>
+  </div>
+
+  <p>plst4 aims to unite all media hosting services under one platform. in plst4, you could have a playlist consisting
+    of tiktok brainrot, youtube video essays and spotify tracks<span style="font-size: 0.5em;"> (at least in
+      theory)</span>, without having to switch apps or whatnot.</p>
+  <br>
+  <p>it is also possible to do watchalongs, as many people can watch the same playlist at the same time.</p>
+
+
+  <hr>
+  <h2>how to use?</h2>
   <p> create an account <a href="/auth/register">here</a> or watch as guest </p>
-  <p> current state: extremely EXPERIMENTAL </p>
+  <p> head to <a href="/watch/">watch</a> to see all available playlist, or create a new one if you are logged in</p>
 
-  <p> here are some toast notifications to have fun with </p>
+  <hr>
+  <h2>what media hosting services are supported?</h2>
+  <p><strong>short answer</strong>: currently youtube only</p>
+  <p><strong>long answer</strong>: plst4 is designed so that any media hosting service with a HTML5 embed player can
+    be
+    supported. however, since plst4 is still extremely EXPERIMENTAL, only youtube is supported for now. once things
+    are
+    stable and there is need, more platforms will be added support.</p>
 
-  <p> <button hx-get="/toast/info" hx-swap="none">info</button> </p>
-  <p> <button hx-get="/toast/error" hx-swap="none">error</button> </p>
+  <hr>
+  <h2>want to deploy your own plst4 instance?</h2>
+  <p>the official instance is too slow? yeah that is a free google compute vm so...</p>
+  <p>head to the official <a href="https://github.com/btmxh/plst4">github</a> to see how you can have your own plst4
+    instance!</p>
+
+  <hr>
+  <h2>appreciation</h2>
+  <p>thanks to the htmx dev (very based guy), go follow him on <a target="_blank"
+      href="https://x.com/htmx_org">xtwitter</a>.</p>
+  <p>thanks to <a target="_blank" href="https://github.com/calzoneman/sync">cytube</a> for the idea.</p>
+
+  <hr>
+  <h2>toast notifications</h2>
+  <p>here are some toast notifications for you to play with!</p>
+  <button class="base-background" hx-get="/toast/info" hx-swap="none">info</button>
+  <button class="accent-background" hx-get="/toast/error" hx-swap="none">error</button>
 </main>
 {{end}}
