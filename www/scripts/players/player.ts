@@ -10,6 +10,8 @@ export const waitUntilDefined = (fn: () => any, callback: () => void) => {
   callback();
 };
 
+let lastNextRequest = -Infinity;
+
 export class Player {
   play() {
   }
@@ -29,10 +31,17 @@ export class Player {
   show() {
   }
 
-  nextRequest() {
+  async nextRequest() {
+    const now = Date.now();
+    // ratelimit
+    if (now - lastNextRequest < 100) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    lastNextRequest = Date.now();
     const form = new FormData();
     form.set("quiet", "true")
-    fetch(`/watch/${(document.querySelector("main") as HTMLElement).dataset.playlist}/queue/nextreq`, {
+    return fetch(`/watch/${(document.querySelector("main") as HTMLElement).dataset.playlist}/queue/nextreq`, {
       method: "post",
       body: form,
     }).then(res => res.text()).then(res => htmx.swap("body", res, {

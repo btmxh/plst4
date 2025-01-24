@@ -4,6 +4,7 @@ import { Youtube } from "./players/youtube.js";
 import { Player } from "./players/player.js";
 import { TestVideoPlayer } from "./players/testvideo.js";
 import { TestAudioPlayer } from "./players/testaudio.js";
+import { SoundCloud } from "./players/soundcloud.js";
 
 (window as any).copyPrevInput = (e: MouseEvent) => {
   let elm = e.currentTarget as HTMLElement;
@@ -44,6 +45,7 @@ const players = {
   "yt": new Youtube(),
   "testvideo": new TestVideoPlayer(),
   "testaudio": new TestAudioPlayer(),
+  "sc": new SoundCloud(),
 } satisfies Record<string, Player>;
 
 const handleMediaChange = (payload: NullableMediaChangePayload) => {

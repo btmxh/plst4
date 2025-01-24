@@ -1,6 +1,6 @@
 export type NullableMediaChangePayload = { type: "none" } | MediaChangePayload;
 export type MediaChangePayload = {
-  type: "yt" | "testvideo" | "testaudio"
+  type: "yt" | "testvideo" | "testaudio" | "sc"
   url: string
   aspectRatio: string
 }
