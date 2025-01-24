@@ -9,8 +9,14 @@ export class TestVideoPlayer extends Player {
     this.player = document.querySelector("video#test-video-player")!;
     this.player.addEventListener("ended", () => this.nextRequest());
     this.player.addEventListener("error", (evt) => {
+      if(this.player.src === "") {
+        return;
+      }
       console.debug("Video player error", evt);
-      this.nextRequest();
+      // playwright browsers might not support the necessary codecs
+      if(!navigator.webdriver && this.player.error?.code !== 4) {
+        this.nextRequest();
+      }
     });
   }
 

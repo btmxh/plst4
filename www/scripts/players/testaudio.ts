@@ -9,8 +9,14 @@ export class TestAudioPlayer extends Player {
     this.player = document.querySelector("audio#test-audio-player")!;
     this.player.addEventListener("ended", () => this.nextRequest());
     this.player.addEventListener("error", (evt) => {
+      if (this.player.src == "") {
+        return;
+      }
       console.debug("Audio player error", evt);
-      this.nextRequest();
+      // playwright browsers might not support the necessary codecs
+      if (!navigator.webdriver && this.player.error?.code !== 4) {
+        this.nextRequest();
+      }
     });
   }
 
