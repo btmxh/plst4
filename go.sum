@@ -109,6 +109,8 @@ github.com/ugorji/go/codec v1.2.12 h1:9LC83zGrHhuUA9l16C9AHXAqEV/2wBQ4nkvumAE65E
 github.com/ugorji/go/codec v1.2.12/go.mod h1:UNopzCgEMSXjBc6AOMqYvWC1ktqTAfzJZUZgYf6w6lg=
 github.com/wader/goutubedl v0.0.0-20241213163500-8ebc956d58c3 h1:Y3j0HT3f7rZ/LNq+tZq+bttCyAjVHCDWPBPwBhTuZMI=
 github.com/wader/goutubedl v0.0.0-20241213163500-8ebc956d58c3/go.mod h1:5KXd5tImdbmz4JoVhePtbIokCwAfEhUVVx3WLHmjYuw=
+github.com/wader/goutubedl v0.0.0-20250123100622-6c49489d9399 h1:y8BMIm8/QDnv5C0fi80+ri317L6GZN7z0xSQKEPpbww=
+github.com/wader/goutubedl v0.0.0-20250123100622-6c49489d9399/go.mod h1:5KXd5tImdbmz4JoVhePtbIokCwAfEhUVVx3WLHmjYuw=
 github.com/wader/osleaktest v0.0.0-20191111175233-f643b0fed071 h1:QkrG4Zr5OVFuC9aaMPmFI0ibfhBZlAgtzDYWfu7tqQk=
 github.com/wader/osleaktest v0.0.0-20191111175233-f643b0fed071/go.mod h1:XD6emOFPHVzb0+qQpiNOdPL2XZ0SRUM0N5JHuq6OmXo=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
