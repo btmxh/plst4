@@ -286,7 +286,7 @@ func (yt *YoutubeAPI) ResolveMedia(ctx context.Context, id string) (ResolvedMedi
 
 	video := response.Items[0]
 	videoLength, err := duration.ParseISO8601(video.ContentDetails.Duration)
-	if err != nil {
+	if err != nil && video.ContentDetails.Duration != "" {
 		return nil, err
 	}
 
@@ -376,7 +376,7 @@ func (yt *YoutubeDL) ResolveMediaList(ctx context.Context, id string) (ResolvedM
 			title:       video.Title,
 			artist:      video.Channel,
 			length:      time.Duration(video.Duration) * time.Second,
-			aspectRatio: fmt.Sprintf("%d/%d", int(video.Width), int(video.Height)),
+			aspectRatio: "16/9",
 		})
 	}
 
