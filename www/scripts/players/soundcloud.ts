@@ -74,6 +74,5 @@ export class SoundCloud extends Player {
     }
 
     this.player.load(payload.url + "?auto_play=true");
-    this.player.play();
   }
 }
