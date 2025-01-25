@@ -55,8 +55,8 @@ func (yt *YtdlResolver) ResolveMedia(src IdMediaSource[string], ctx context.Cont
 
 	return NewIdMediaObject(src, id, &IdMediaObjectResolveInfo{
 		id:          id,
-		title:       result.Info.Title,
-		artist:      result.Info.Channel,
+		title:       firstNonEmpty(result.Info.Title, UnknownTitle),
+		artist:      firstNonEmpty(result.Info.Channel, result.Info.Uploader, UnknownArtist),
 		length:      time.Duration(result.Info.Duration) * time.Second,
 		aspectRatio: fmt.Sprintf("%d/%d", int(result.Info.Width), int(result.Info.Height)),
 	}), nil
@@ -75,8 +75,8 @@ func (yt *YtdlResolver) ResolveMediaList(src IdMediaSource[string], ctx context.
 	for _, video := range result.Info.Entries {
 		medias = append(medias, *NewIdMediaObject(src, id, &IdMediaObjectResolveInfo{
 			id:          id,
-			title:       video.Title,
-			artist:      video.Channel,
+			title:       firstNonEmpty(video.Title, UnknownTitle),
+			artist:      firstNonEmpty(video.Channel, video.Uploader),
 			length:      time.Duration(video.Duration) * time.Second,
 			aspectRatio: "16/9",
 		}))
