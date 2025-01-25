@@ -13,8 +13,8 @@ const (
 	MediaKindNone      MediaKind = "none"
 	MediaKindTestVideo MediaKind = "testvideo"
 	MediaKindTestAudio MediaKind = "testaudio"
-	UnknownTitle = "Unknown title"
-	UnknownArtist = "Unknown artist"
+	UnknownTitle                 = "Unknown title"
+	UnknownArtist                = "Unknown artist"
 )
 
 var ErrUnsupportedURL = errors.New("Unsupported URL")
@@ -52,3 +52,12 @@ type MediaSource interface {
 	ProcessURL(u *url.URL) (MediaObject, error)
 }
 
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
+}

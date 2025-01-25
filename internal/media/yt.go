@@ -139,10 +139,10 @@ func (yt *YoutubeAPI) ResolveMedia(src IdMediaSource[string], ctx context.Contex
 		return nil, err
 	}
 
-	return NewIdMediaObject[string](src, id, &IdMediaObjectResolveInfo{
+	return NewIdMediaObject(src, id, &IdMediaObjectResolveInfo{
 		id:          id,
-		title:       video.Snippet.Title,
-		artist:      video.Snippet.ChannelTitle,
+		title:       firstNonEmpty(video.Snippet.Title, UnknownTitle),
+		artist:      firstNonEmpty(video.Snippet.ChannelTitle, UnknownArtist),
 		length:      isoDurationToGoDuration(videoLength),
 		aspectRatio: "16/9",
 	}), nil
