@@ -13,6 +13,7 @@ type YtdlResolver struct {
 	mediaUrlPattern     string
 	mediaListUrlPattern string
 	searchPrefix        string
+	idExtractor         func(goutubedl.Info) string
 }
 
 func NewYtdlResolver(mediaUrlPattern, mediaListUrlPattern, searchPrefix string) *YtdlResolver {
@@ -73,8 +74,12 @@ func (yt *YtdlResolver) ResolveMediaList(src IdMediaSource[string], ctx context.
 
 	var medias []IdMediaObject[string]
 	for _, video := range result.Info.Entries {
-		medias = append(medias, *NewIdMediaObject(src, id, &IdMediaObjectResolveInfo{
-			id:          id,
+		mediaId := video.ID
+		if yt.idExtractor != nil {
+			id = yt.idExtractor(video)
+		}
+		medias = append(medias, *NewIdMediaObject(src, mediaId, &IdMediaObjectResolveInfo{
+			id:          mediaId,
 			title:       firstNonEmpty(video.Title, UnknownTitle),
 			artist:      firstNonEmpty(video.Channel, video.Uploader),
 			length:      time.Duration(video.Duration) * time.Second,

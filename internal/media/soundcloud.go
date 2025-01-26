@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+
+	"github.com/wader/goutubedl"
 )
 
 const MediaKindSoundcloud MediaKind = "sc"
@@ -16,6 +18,15 @@ func NewSoundcloudYtdlResolver() *YtdlResolver {
 		mediaUrlPattern:     "https://soundcloud.com/%s",
 		mediaListUrlPattern: "",
 		searchPrefix:        "scsearch1:",
+		// this is not really used as media lists are currently unsupported
+		idExtractor: func(info goutubedl.Info) string {
+			id := strings.TrimPrefix(info.WebpageURL, "https://soundcloud.com/")
+			if id == info.WebpageURL {
+				panic("incomplete soundcloud info")
+			}
+
+			return id
+		},
 	}
 }
 
