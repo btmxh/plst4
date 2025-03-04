@@ -169,6 +169,14 @@ func processYoutubeURL(src *YoutubeSource, u *url.URL) (MediaObject, error) {
 		return nil, ErrUnsupportedURL
 	}
 
+	if id, found := strings.CutPrefix(path, "shorts/"); found {
+		if !checkVideoId(id) {
+      return nil, ErrInvalidYTURL
+		}
+
+		return NewIdMediaObject(src, id, nil), nil
+	}
+
 	if path == "watch" {
 		id := query.Get("v")
 		if !checkVideoId(id) {
