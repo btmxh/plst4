@@ -256,6 +256,7 @@ func playlistRenameCommon(c *gin.Context) (title string, hasErr bool) {
 		return "", true
 	}
 
+	services.WebSocketPlaylistEvent(id, services.PlaylistChanged)
 	return name, tx.Commit()
 }
 
