@@ -129,6 +129,7 @@
 
 {{define "controller"}}
 {{$isOwner := eq (GetUsername .Context) .Owner}}
+<title>plst4 - {{.Name}}</title>
 <section class="playlist-info">
   {{if $isOwner}}
   <div class="button-bar">
