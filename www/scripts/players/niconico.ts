@@ -54,17 +54,27 @@ export class Niconico extends Player {
   }
 
   postMessage(msg: any) {
+    msg = Object.assign({
+      sourceConnectorType: 1,
+      playerId: Niconico.playerId
+    }, msg);
     this.player?.contentWindow?.postMessage(msg, Niconico.origin);
   }
 
   onMessage(e: MessageEvent) {
-    if (e.origin !== Niconico.origin || e.data.playerId !== Niconico.playerId) {
+    if (e.origin !== Niconico.origin || e.data.playerId !== Niconico.playerId.toString()) {
       return;
     }
 
-    if (e.data.eventName === "playerStatusChange" && e.data.playerStatus === 4) {
+    if (e.data.eventName === "playerStatusChange" && e.data.data.playerStatus === 4) {
       this.nextRequest();
     }
+
+    if (e.data.eventName === "error") {
+      this.nextRequest();
+    }
+
+    console.debug(e.data);
   }
 }
 
