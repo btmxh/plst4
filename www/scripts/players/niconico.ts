@@ -63,7 +63,7 @@ export class Niconico extends Player {
   postMessage(msg: any) {
     msg = Object.assign({
       sourceConnectorType: 1,
-      playerId: Niconico.playerId
+      playerId: Niconico.playerId.toString(),
     }, msg);
     let done = false;
     const callback = () => {
