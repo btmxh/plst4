@@ -92,8 +92,6 @@ export class Niconico extends Player {
     if (e.data.eventName === "error") {
       this.nextRequest();
     }
-
-    console.debug(e.data);
   }
 }
 
