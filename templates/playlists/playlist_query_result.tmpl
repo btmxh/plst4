@@ -27,15 +27,15 @@
   <section class="playlist-result-wrapper">
     {{range $playlist := .Results}}
     <div class="playlist-result-single">
-      <a class="thumbnail" href="/watch/{{$playlist.Id}}">
-        <img src="/assets/local.svg" alt="temporary playlist thumbnail">
+      <a class="thumbnail no-link-effect" href="/watch/{{$playlist.Id}}">
+        <img src="{{$playlist.Thumbnail}}" alt="Playlist thumbnail of {{$playlist.Name}}">
       </a>
       <div class="info">
         <a class="title" href="/watch/{{$playlist.Id}}">{{$playlist.Name}}</a>
         <p>Created at {{FormatTimestampUTC $playlist.CreatedTimestamp}} by {{$playlist.OwnerUsername}}</p>
         <p>Total length: {{FormatDuration $playlist.TotalLength}} ({{$playlist.ItemCount}} tracks)</p>
         {{if ne (len $playlist.CurrentPlaying) 0}}
-        <p>Currently playing: Inochi wa Kirawarete iru - Guriri, Kanzaki Iori</p>
+        <p>Currently playing: {{$playlist.CurrentPlaying}}</p>
         {{end}}
         <div class="playlist-button-bar">
           <a role="button" class="button-link base-background" href="/watch/{{$playlist.Id}}">Watch</a>

@@ -9,6 +9,7 @@ import (
 
 	"github.com/btmxh/plst4/internal/db"
 	"github.com/btmxh/plst4/internal/errs"
+	"github.com/btmxh/plst4/internal/media"
 )
 
 type PlaylistAddPosition string
@@ -60,6 +61,7 @@ type QueriedPlaylist struct {
 	ItemCount        int
 	TotalLength      time.Duration
 	CurrentPlaying   string
+	Thumbnail        string
 }
 
 func IsPlaylistOwner(tx *db.Tx, username string, playlist int) (isOwner, hasErr bool) {
@@ -89,10 +91,12 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 	switch filter {
 	case All:
 		hasErr = tx.Query(&rows,
-			`SELECT id, name, owner_username, created_timestamp, 
-              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
-							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
-         FROM playlists 
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+              COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
+         FROM playlists p
+				 LEFT JOIN playlist_items i ON i.id = p.current
+				 LEFT JOIN medias m ON m.id = i.media
          WHERE POSITION($1 IN LOWER(name)) > 0 
          ORDER BY created_timestamp DESC
          LIMIT $2 OFFSET $3`,
@@ -101,10 +105,12 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 		break
 	case Owned:
 		hasErr = tx.Query(&rows,
-			`SELECT id, name, owner_username, created_timestamp, 
-              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
-							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
-         FROM playlists 
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+              COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
+         FROM playlists p
+				 LEFT JOIN playlist_items i ON i.id = p.current
+				 LEFT JOIN medias m ON m.id = i.media
          WHERE POSITION($1 IN LOWER(name)) > 0 
            AND owner_username = $4 
          ORDER BY created_timestamp 
@@ -114,12 +120,14 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 		break
 	case Managed:
 		hasErr = tx.Query(&rows,
-			`SELECT id, name, owner_username, created_timestamp, 
-              COALESCE((SELECT COUNT(*) FROM playlist_items WHERE playlist = playlists.id), 0),
-							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = playlists.id), 0)
-         FROM playlists 
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+              COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
+							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
+         FROM playlists p
+				 LEFT JOIN playlist_items i ON i.id = p.current
+				 LEFT JOIN medias m ON m.id = i.media
          WHERE POSITION($1 IN LOWER(name)) > 0 
-           AND (owner_username = $4 OR $4 IN (SELECT username FROM playlist_manage WHERE playlist = playlists.id))
+           AND (owner_username = $4 OR $4 IN (SELECT username FROM playlist_manage WHERE playlist = p.id))
          ORDER BY created_timestamp 
          LIMIT $2 OFFSET $3`,
 			query, DefaultPagingLimit+1, offset, username,
@@ -132,14 +140,19 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 
 	var playlists []QueriedPlaylist
 	for rows.Next() {
+		var mediaUrl, mediaTitle, mediaArtist sql.NullString
 		var playlist QueriedPlaylist
 		var totalLength int
-		if err := rows.Scan(&playlist.Id, &playlist.Name, &playlist.OwnerUsername, &playlist.CreatedTimestamp, &playlist.ItemCount, &totalLength); err != nil {
+		if err := rows.Scan(&playlist.Id, &playlist.Name, &playlist.OwnerUsername, &playlist.CreatedTimestamp, &mediaUrl, &mediaTitle, &mediaArtist, &playlist.ItemCount, &totalLength); err != nil {
 			tx.PrivateError(err)
 			tx.PublicError(http.StatusInternalServerError, db.GenericError)
 			return
 		}
 
+		if mediaTitle.Valid && mediaArtist.Valid {
+			playlist.CurrentPlaying = fmt.Sprintf("%s by %s", mediaTitle.String, mediaArtist.String)
+		}
+		playlist.Thumbnail = media.GetThumbnail(mediaUrl)
 		playlist.TotalLength = time.Duration(totalLength) * time.Second
 		playlists = append(playlists, playlist)
 	}
