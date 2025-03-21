@@ -256,7 +256,12 @@ func playlistRenameCommon(c *gin.Context) (title string, hasErr bool) {
 		return "", true
 	}
 
-	return name, tx.Commit()
+	if tx.Commit() {
+		return "", true
+	}
+
+	services.WebSocketPlaylistEvent(id, services.PlaylistChanged)
+	return name, false
 }
 
 func playlistDeleteCommon(c *gin.Context) (hasErr bool) {
