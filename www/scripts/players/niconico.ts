@@ -8,6 +8,8 @@ export class Niconico extends Player {
 
   container: HTMLDivElement;
   player: HTMLIFrameElement | undefined;
+  pendingMessages: any[] = [];
+  playerLoaded: boolean = false;
 
   constructor() {
     super();
@@ -16,11 +18,12 @@ export class Niconico extends Player {
   }
 
   show() {
-    this.container.classList.add("show")
+    this.container.classList.add("show");
   }
 
   hide() {
-    this.container.classList.remove("show")
+    this.container.classList.remove("show");
+    this.container.replaceChildren();
   }
 
   play() {
@@ -42,9 +45,13 @@ export class Niconico extends Player {
       return;
     }
 
+    this.playerLoaded = false;
     this.player = document.createElement("iframe");
     const id = payload.url.substring("https://www.nicovideo.jp/watch/".length);
     const playerId = ++Niconico.playerId;
+    this.player.addEventListener('load', () => {
+      this.playerLoaded = true;
+    });
     this.player.src = `${Niconico.origin}/watch/${id}?jsapi=1&playerId=${playerId}&autoplay=1`;
     this.player.id = "niconico-video-player";
     this.player.allow = "autoplay; fullscreen";
@@ -58,7 +65,19 @@ export class Niconico extends Player {
       sourceConnectorType: 1,
       playerId: Niconico.playerId
     }, msg);
-    this.player?.contentWindow?.postMessage(msg, Niconico.origin);
+    let done = false;
+    const callback = () => {
+      if (!done) {
+        this.player?.contentWindow?.postMessage(msg, Niconico.origin);
+        done = true;
+      }
+    }
+    this.player?.addEventListener('load', () => {
+      callback();
+    });
+    if (this.playerLoaded) {
+      callback();
+    }
   }
 
   onMessage(e: MessageEvent) {
