@@ -91,12 +91,15 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 	switch filter {
 	case All:
 		hasErr = tx.Query(&rows,
-			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url,
+							COALESCE(a.alt_title, m.title),
+              COALESCE(a.alt_artist, m.artist),
               COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
 							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
          FROM playlists p
 				 LEFT JOIN playlist_items i ON i.id = p.current
 				 LEFT JOIN medias m ON m.id = i.media
+				 LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = p.id
          WHERE POSITION($1 IN LOWER(name)) > 0 
          ORDER BY created_timestamp DESC
          LIMIT $2 OFFSET $3`,
@@ -105,12 +108,15 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 		break
 	case Owned:
 		hasErr = tx.Query(&rows,
-			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url,
+							COALESCE(a.alt_title, m.title),
+              COALESCE(a.alt_artist, m.artist),
               COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
 							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
          FROM playlists p
 				 LEFT JOIN playlist_items i ON i.id = p.current
 				 LEFT JOIN medias m ON m.id = i.media
+				 LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = p.id
          WHERE POSITION($1 IN LOWER(name)) > 0 
            AND owner_username = $4 
          ORDER BY created_timestamp 
@@ -120,12 +126,15 @@ func SearchPlaylists(tx *db.Tx, username string, query string, filter PlaylistFi
 		break
 	case Managed:
 		hasErr = tx.Query(&rows,
-			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url, m.title, m.artist,
+			`SELECT p.id, p.name, p.owner_username, p.created_timestamp, m.url,
+							COALESCE(a.alt_title, m.title),
+              COALESCE(a.alt_artist, m.artist),
               COALESCE((SELECT COUNT(*) FROM playlist_items i WHERE i.playlist = p.id), 0),
 							COALESCE((SELECT SUM(m.duration) FROM playlist_items i JOIN medias m ON m.id = i.media WHERE i.playlist = p.id), 0)
          FROM playlists p
 				 LEFT JOIN playlist_items i ON i.id = p.current
 				 LEFT JOIN medias m ON m.id = i.media
+				 LEFT JOIN alt_metadata a ON a.media = m.id AND a.playlist = p.id
          WHERE POSITION($1 IN LOWER(name)) > 0 
            AND (owner_username = $4 OR $4 IN (SELECT username FROM playlist_manage WHERE playlist = p.id))
          ORDER BY created_timestamp 
