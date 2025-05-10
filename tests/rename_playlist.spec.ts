@@ -45,6 +45,6 @@ test.describe("rename playlist scenarios", () => {
     });
 
     await page.getByRole('button', { name: "Rename" }).click();
-    await page.waitForSelector("h2:has-text('Current playlist: shiho × CTB Girls' Dorm Cover Collection,  \"Believe in yourself, Mona!\" 👈 🤣 😆 even the iris...')");
+    await page.waitForSelector("h2:has-text('Current playlist: shiho × CTB Girls\\' Dorm Cover Collection,  \"Believe in yourself, Mona!\" 👈 🤣 😆 even the iris...')");
   });
 });
