@@ -33,7 +33,7 @@ test.describe("rename playlist scenarios", () => {
   });
 
   // issue #22
-  test("rename controller swap behavior", async ({ page, browserName }) => {
+  test("rename unicode title test", async ({ page, browserName }) => {
     await createPlaylist("rename controller unicode #22", page, browserName);
     await page.locator("label:has-text('controller')").click({ force: true });
     await page.waitForSelector("h2:has-text('Current playlist: rename controller unicode #22')");
