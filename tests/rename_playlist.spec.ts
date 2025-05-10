@@ -20,7 +20,7 @@ test.describe("rename playlist scenarios", () => {
   // issue #13
   test("rename controller swap behavior", async ({ page, browserName }) => {
     await createPlaylist("rename controller swap #13", page, browserName);
-    await page.locator("label:has-text('controller')").click({force: true});
+    await page.locator("label:has-text('controller')").click({ force: true });
     await page.waitForSelector("h2:has-text('Current playlist: rename controller swap #13')");
 
     page.once("dialog", async dialog => {
@@ -30,5 +30,21 @@ test.describe("rename playlist scenarios", () => {
     });
     await page.getByRole('button', { name: "Rename" }).click();
     await page.waitForSelector("h2:has-text('Current playlist: rename controller swap #12')");
-  })
+  });
+
+  // issue #22
+  test("rename controller swap behavior", async ({ page, browserName }) => {
+    await createPlaylist("rename controller unicode #22", page, browserName);
+    await page.locator("label:has-text('controller')").click({ force: true });
+    await page.waitForSelector("h2:has-text('Current playlist: rename controller unicode #22')");
+
+    page.once("dialog", async dialog => {
+      expect(dialog.type()).toBe("prompt");
+      expect(dialog.message()).toBe("Enter the new playlist name");
+      await dialog.accept(`shiho × CTB Girls' Dorm Cover Collection,  "Believe in yourself, Mona!" 👈 🤣 😆 even the iris...`);
+    });
+
+    await page.getByRole('button', { name: "Rename" }).click();
+    await page.waitForSelector("h2:has-text('Current playlist: shiho × CTB Girls' Dorm Cover Collection,  \"Believe in yourself, Mona!\" 👈 🤣 😆 even the iris...')");
+  });
 });

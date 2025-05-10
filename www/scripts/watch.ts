@@ -19,6 +19,12 @@ import { Niconico } from "./players/niconico.js";
   navigator.clipboard.writeText(elm.href);
 };
 
+// temp fix for https://github.com/btmxh/plst4/issues/22
+document.body.addEventListener('htmx:configRequest', (evt: any) => {
+  if (evt.detail.headers['HX-Prompt'])
+    evt.detail.headers['HX-Prompt'] = encodeURIComponent(evt.detail.headers['HX-Prompt']);
+});
+
 const socket = new Plst4Socket((msg) => {
   console.debug(msg);
   switch (msg.type) {
