@@ -236,7 +236,6 @@ func playlistRenameCommon(c *gin.Context) (title string, hasErr bool) {
 	username := stores.GetUsername(c)
 	id := stores.GetPlaylistId(c)
 
-	slog.Warn("wtf", "gaming", []byte(c.GetHeader("Hx-Prompt")))
 	name, err := HxPrompt(c)
 	if err != nil || !playlistNameRegex.MatchString(name) {
 		if err != nil {
