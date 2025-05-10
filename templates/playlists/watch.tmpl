@@ -192,8 +192,11 @@
   {{$loggedIn := HasUsername .Context}}
   <main class="main-content no-border no-margin no-padding full {{if .ErrorString}}noanim{{end}}"
     hx-target="closest main" hx-swap="outerHTML" data-playlist={{.Id}}>
-    <input id="websocket-id-input" type="hidden" name="websocket-id" value="">
     <link rel="stylesheet" href="/styles/playlist-watch.css" type="text/css">
+
+    <input id="websocket-id-input" type="hidden" name="websocket-id" value="">
+    <input id="playlist-current-version-input" type="hidden" name="playlist-current-version" value={{.CurrentVersion}}>
+
     <article id="media-player">
       <div id="youtube-video-player-wrapper" class="media-player-wrapper">
         <div id="#youtube-video-player"></div>

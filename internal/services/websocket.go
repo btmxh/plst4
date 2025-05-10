@@ -38,6 +38,7 @@ type MediaChangedPayload struct {
 	Type        media.MediaKind `json:"type"`
 	Url         string          `json:"url"`
 	AspectRatio string          `json:"aspectRatio"`
+	NewVersion  int             `json:"newVersion"`
 }
 
 type WebSocketMsg struct {

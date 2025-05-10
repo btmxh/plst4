@@ -192,7 +192,7 @@ func CheckPlaylistExists(tx *db.Tx, id int) (hasRow bool, hasErr bool) {
 }
 
 func SetCurrentMedia(tx *db.Tx, playlist int, itemId sql.NullInt32) (hasErr bool) {
-	return tx.Exec(nil, "UPDATE playlists SET current = $1 WHERE id = $2", itemId, playlist)
+	return tx.Exec(nil, "UPDATE playlists SET current = $1, current_version = current_version + 1 WHERE id = $2", itemId, playlist)
 }
 
 func GetCurrentMedia(tx *db.Tx, playlist int) (itemId sql.NullInt32, hasErr bool) {

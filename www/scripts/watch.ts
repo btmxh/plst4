@@ -57,6 +57,17 @@ const players = {
 } satisfies Record<string, Player>;
 
 const handleMediaChange = (payload: NullableMediaChangePayload) => {
+  const inp = document.querySelector<HTMLInputElement>("#playlist-current-version-input");
+  if (inp === null) {
+    console.error("Malformed HTML: current version input not found");
+    return;
+  }
+
+  if (payload.newVersion.toString() === inp.value) {
+    return;
+  }
+  inp.value = payload.newVersion.toString();
+
   for (const [key, player] of Object.entries(players)) {
     player.stop();
     if (key === payload.type) {

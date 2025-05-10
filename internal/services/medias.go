@@ -95,7 +95,7 @@ func SetMediaAltMetadata(tx *db.Tx, title, artist string, playlist, media int) (
 func NotifyMediaChanged(tx *db.Tx, playlist int, socketId string) (callback func(), hasErr bool) {
 	var payload MediaChangedPayload
 	var hasRow bool
-	if tx.QueryRow("SELECT m.media_type, m.url, m.aspect_ratio FROM playlists p JOIN playlist_items i ON p.current = i.id JOIN medias m ON m.id = i.media WHERE p.id = $1", playlist).Scan(&hasRow, &payload.Type, &payload.Url, &payload.AspectRatio) {
+	if tx.QueryRow("SELECT m.media_type, m.url, m.aspect_ratio, p.current_version FROM playlists p JOIN playlist_items i ON p.current = i.id JOIN medias m ON m.id = i.media WHERE p.id = $1", playlist).Scan(&hasRow, &payload.Type, &payload.Url, &payload.AspectRatio, &payload.NewVersion) {
 		return nil, true
 	}
 

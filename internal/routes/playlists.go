@@ -236,6 +236,7 @@ func playlistRenameCommon(c *gin.Context) (title string, hasErr bool) {
 	username := stores.GetUsername(c)
 	id := stores.GetPlaylistId(c)
 
+	slog.Warn("wtf", "gaming", []byte(c.GetHeader("Hx-Prompt")))
 	name, err := HxPrompt(c)
 	if err != nil || !playlistNameRegex.MatchString(name) {
 		if err != nil {
@@ -294,7 +295,8 @@ func playlistWatch(c *gin.Context) {
 
 	var name string
 	var hasRow bool
-	if tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&hasRow, &name) {
+	var curVersion int
+	if tx.QueryRow("SELECT name, current_version FROM playlists WHERE id = $1", id).Scan(&hasRow, &name, &curVersion) {
 		return
 	}
 
@@ -303,8 +305,9 @@ func playlistWatch(c *gin.Context) {
 	}
 
 	html.RenderGin(playlistWatchTmpl, c, "layout", gin.H{
-		"Id":    id,
-		"Title": name,
+		"Id":             id,
+		"Title":          name,
+		"CurrentVersion": curVersion,
 	})
 }
 
