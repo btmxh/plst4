@@ -191,6 +191,12 @@
     <p>Media duration (seconds): <span id="debug-media-duration">{{ToSeconds .Duration}}</span></p>
     <p>Media thumbnail URL: <a href="{{.ThumbnailUrl}}" target="_blank"
         id="debug-media-thumbnail-url">{{.ThumbnailUrl}}</a></p>
+    <div style="display: flex; justify-content: flex-end; align-items: flex-end;">
+      <button type="button" class="accent-background" style="margin-top: 8px;" id="debug-update-media-metadata"
+        hx-post="/medias/{{.Id}}/update" hx-swap="none">
+        Update media metadata
+      </button>
+    </div>
     {{end}}
   </section>
   {{end}}

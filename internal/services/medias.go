@@ -14,6 +14,11 @@ func GetMediaId(tx *db.Tx, url string) (id int, hasRow, hasErr bool) {
 	return id, hasRow, hasErr
 }
 
+func GetMediaUrl(tx *db.Tx, id int) (url string, hasRow, hasErr bool) {
+	hasErr = tx.QueryRow("SELECT url FROM medias WHERE id = $1", id).Scan(&hasRow, &url)
+	return url, hasRow, hasErr
+}
+
 type DatabaseResolvedMediaObject struct {
 	kind        media.MediaKind
 	url         string
@@ -106,4 +111,25 @@ func NotifyMediaChanged(tx *db.Tx, playlist int, socketId string) (callback func
 	return func() {
 		WebSocketMediaChange(playlist, socketId, payload)
 	}, false
+}
+
+func UpdateMedia(tx *db.Tx, id int, entry media.ResolvedMediaObjectSingle) (hasErr bool) {
+	hasErr = tx.Exec(nil,
+		`UPDATE medias
+		 SET media_type = $1,
+		     title = $2,
+		     artist = $3,
+		     duration = $4,
+		     url = $5,
+		     aspect_ratio = $6
+		 WHERE id = $7`,
+		string(entry.Kind()),
+		entry.Title(),
+		entry.Artist(),
+		int(entry.Duration().Seconds()),
+		entry.URL().String(),
+		entry.AspectRatio(),
+		id,
+	)
+	return hasErr
 }
