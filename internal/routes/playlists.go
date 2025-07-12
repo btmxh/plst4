@@ -294,7 +294,7 @@ func playlistWatch(c *gin.Context) {
 
 	var name string
 	var hasRow bool
-	if tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&hasRow) {
+	if tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&hasRow, &name) {
 		return
 	}
 
