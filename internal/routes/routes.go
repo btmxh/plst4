@@ -38,6 +38,7 @@ func CreateMainRouter() http.Handler {
 	WebSocketRouter(router.Group("/ws"))
 	// only enabled when using memorymail
 	MailRouter(router.Group("/mail"))
+	MediasRouter(router.Group("/medias"))
 
 	router.Static("/scripts", "./dist/scripts")
 	router.Static("/styles", "./dist/styles")
