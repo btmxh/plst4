@@ -294,8 +294,7 @@ func playlistWatch(c *gin.Context) {
 
 	var name string
 	var hasRow bool
-	var curVersion int
-	if tx.QueryRow("SELECT name, current_version FROM playlists WHERE id = $1", id).Scan(&hasRow, &name, &curVersion) {
+	if tx.QueryRow("SELECT name FROM playlists WHERE id = $1", id).Scan(&hasRow) {
 		return
 	}
 
@@ -304,9 +303,8 @@ func playlistWatch(c *gin.Context) {
 	}
 
 	html.RenderGin(playlistWatchTmpl, c, "layout", gin.H{
-		"Id":             id,
-		"Title":          name,
-		"CurrentVersion": curVersion,
+		"Id":    id,
+		"Title": name,
 	})
 }
 
@@ -477,6 +475,7 @@ func playlistWatchController(c *gin.Context) {
 			"URL":               url,
 			"Title":             altTitle,
 			"Artist":            altArtist,
+			"ThumbnailUrl":      media.GetThumbnail(sql.NullString{String: url, Valid: true}),
 			"OriginalTitle":     title,
 			"OriginalArtist":    artist,
 			"Duration":          time.Duration(duration) * time.Second,

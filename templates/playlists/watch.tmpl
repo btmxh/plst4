@@ -178,12 +178,18 @@
 
   <hr>
   <section>
+    <!-- third-party stuff relies on these hehe -->
     <p><strong>Debug info:</strong></p>
     <p>Playlist ID: {{.Id}}</p>
+    <p>Playlist name: <span id="debug-playlist-name">{{.Name}}</span></p>
     {{with .Media}}
     <p>Media ID: {{.Id}}, type: {{.Type}}</p>
     <p>Playlist item ID: {{.ItemId}}</p>
     <p>Media URL: <a href="{{.URL}}" target="_blank">{{.URL}}</a></p>
+    <p>Media title: <span id="debug-media-title">{{.Title}}</span></p>
+    <p>Media artist: <span id="debug-media-artist">{{.Artist}}</span></p>
+    <p>Media duration (seconds): <span id="debug-media-duration">{{ToSeconds .Duration}}</span></p>
+    <p>Media thumbnail URL: <span id="debug-media-thumbnail-url">{{.ThumbnailUrl}}</span></p>
     {{end}}
   </section>
   {{end}}

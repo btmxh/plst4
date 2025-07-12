@@ -62,6 +62,9 @@ func DefaultFuncMap() template.FuncMap {
 
 			return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 		},
+		"ToSeconds": func(d time.Duration) int {
+			return int(d.Seconds())
+		},
 		"HumanIndex": func(i int) int {
 			return i + 1
 		},
