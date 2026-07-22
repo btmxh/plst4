@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 	"maps"
+	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/btmxh/plst4/internal/stores"
@@ -80,5 +82,34 @@ func DefaultFuncMap() template.FuncMap {
 
 func GetTemplate(name string, paths ...string) *template.Template {
 	paths = append(paths, "templates/layout.tmpl")
-	return template.Must(template.New(name).Funcs(DefaultFuncMap()).ParseFiles(paths...))
+	return parseTemplateFiles(name, DefaultFuncMap(), paths...)
+}
+
+func parseTemplateFiles(name string, funcs template.FuncMap, paths ...string) *template.Template {
+	tmpl := template.New(name)
+	if funcs != nil {
+		tmpl = tmpl.Funcs(funcs)
+	}
+
+	parsed, err := tmpl.ParseFiles(paths...)
+	if err == nil {
+		return parsed
+	}
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return template.Must(nil, err)
+	}
+
+	root := filepath.Join(filepath.Dir(filename), "..", "..")
+	rootPaths := make([]string, len(paths))
+	for i, path := range paths {
+		rootPaths[i] = filepath.Join(root, path)
+	}
+
+	tmpl = template.New(name)
+	if funcs != nil {
+		tmpl = tmpl.Funcs(funcs)
+	}
+	return template.Must(tmpl.ParseFiles(rootPaths...))
 }

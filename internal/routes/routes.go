@@ -27,7 +27,7 @@ func CreateMainRouter() http.Handler {
 		gzipMode = 0
 	}
 
-	router.Use(gzip.Gzip(gzipMode))
+	router.Use(gzip.Gzip(gzipMode, gzip.WithExcludedPaths([]string{"/sse"})))
 	router.Use(middlewares.AuthMiddleware())
 
 	router.GET("/", HomeRouter)
@@ -36,6 +36,7 @@ func CreateMainRouter() http.Handler {
 	WatchRouter(router.Group("/watch"))
 	PlaylistRouter(router.Group("/playlists"))
 	WebSocketRouter(router.Group("/ws"))
+	SSERouter(router.Group("/sse"))
 	// only enabled when using memorymail
 	MailRouter(router.Group("/mail"))
 	MediasRouter(router.Group("/medias"))
