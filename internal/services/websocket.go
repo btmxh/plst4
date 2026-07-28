@@ -15,8 +15,18 @@ import (
 )
 
 type WebSocketConnection struct {
-	Conn     *websocket.Conn
+	Client   RealtimeClient
 	Username string
+}
+
+type RealtimeClient interface {
+	Send(WebSocketMsg) error
+}
+
+type RealtimeClientFunc func(WebSocketMsg) error
+
+func (f RealtimeClientFunc) Send(msg WebSocketMsg) error {
+	return f(msg)
 }
 
 type WebSocketMsgType string
@@ -48,28 +58,28 @@ type WebSocketMsg struct {
 
 type WebSocketManager struct {
 	playlists map[int]*PlaylistState
-	sockets   map[string]*websocket.Conn
+	sockets   map[string]RealtimeClient
 	mutex     sync.RWMutex
 }
 
 type PlaylistState struct {
-	userSockets   map[string]map[string]*websocket.Conn
+	userSockets   map[string]map[string]RealtimeClient
 	nextRequested map[string]struct{}
 }
 
-func send(id string, ws *websocket.Conn, msg WebSocketMsg) {
-	err := websocket.JSON.Send(ws, msg)
+func send(id string, client RealtimeClient, msg WebSocketMsg) {
+	err := client.Send(msg)
 	if err != nil {
-		slog.Warn("Unable to send WebSocket message to client", "sid", id, "msg", msg)
+		slog.Warn("Unable to send realtime message to client", "sid", id, "msg", msg)
 	}
 }
 
-func (p *PlaylistState) Add(conn *websocket.Conn, username, id string) {
+func (p *PlaylistState) Add(client RealtimeClient, username, id string) {
 	if _, ok := p.userSockets[username]; !ok {
-		p.userSockets[username] = make(map[string]*websocket.Conn)
+		p.userSockets[username] = make(map[string]RealtimeClient)
 	}
 
-	p.userSockets[username][id] = conn
+	p.userSockets[username][id] = client
 }
 
 func (p *PlaylistState) Remove(username, id string) bool {
@@ -98,24 +108,30 @@ func (p *PlaylistState) Broadcast(msg WebSocketMsg) {
 
 var manager WebSocketManager = WebSocketManager{
 	playlists: make(map[int]*PlaylistState),
-	sockets:   make(map[string]*websocket.Conn),
+	sockets:   make(map[string]RealtimeClient),
 }
 
 func (manager *WebSocketManager) Add(conn *websocket.Conn, playlist int, username string) string {
+	return manager.AddClient(RealtimeClientFunc(func(msg WebSocketMsg) error {
+		return websocket.JSON.Send(conn, msg)
+	}), playlist, username)
+}
+
+func (manager *WebSocketManager) AddClient(client RealtimeClient, playlist int, username string) string {
 	manager.mutex.Lock()
 	defer manager.mutex.Unlock()
 
 	id := uniuri.New()
 	if _, ok := manager.playlists[playlist]; !ok {
 		manager.playlists[playlist] = &PlaylistState{
-			userSockets:   make(map[string]map[string]*websocket.Conn),
+			userSockets:   make(map[string]map[string]RealtimeClient),
 			nextRequested: make(map[string]struct{}),
 		}
 	}
 
-	manager.playlists[playlist].Add(conn, username, id)
-	manager.sockets[id] = conn
-	send(id, conn, WebSocketMsg{Type: Handshake, Payload: id})
+	manager.playlists[playlist].Add(client, username, id)
+	manager.sockets[id] = client
+	send(id, client, WebSocketMsg{Type: Handshake, Payload: id})
 	return id
 }
 
@@ -126,6 +142,7 @@ func (manager *WebSocketManager) Remove(playlist int, username string, id string
 	if manager.playlists[playlist].Remove(username, id) {
 		delete(manager.playlists, playlist)
 	}
+	delete(manager.sockets, id)
 }
 
 func (manager *WebSocketManager) SendId(id string, msg WebSocketMsg) {

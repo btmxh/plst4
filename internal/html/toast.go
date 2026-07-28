@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var toastTemplate = template.Must(template.ParseFiles("templates/notifications/toast.tmpl"))
+var toastTemplate = parseTemplateFiles("toast", nil, "templates/notifications/toast.tmpl")
 
 type ToastKind string
 

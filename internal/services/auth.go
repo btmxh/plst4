@@ -10,7 +10,9 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/btmxh/plst4/internal/auth"
@@ -21,7 +23,22 @@ import (
 )
 
 func getEmailTemplate(name string) *template.Template {
-	return template.Must(template.ParseFiles(fmt.Sprintf("templates/email/%s.tmpl", name), "templates/email/layout.tmpl"))
+	paths := []string{fmt.Sprintf("templates/email/%s.tmpl", name), "templates/email/layout.tmpl"}
+	tmpl, err := template.ParseFiles(paths...)
+	if err == nil {
+		return tmpl
+	}
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return template.Must(nil, err)
+	}
+
+	root := filepath.Join(filepath.Dir(filename), "..", "..")
+	for i, path := range paths {
+		paths[i] = filepath.Join(root, path)
+	}
+	return template.Must(template.ParseFiles(paths...))
 }
 
 var confirmEmailTmpl = getEmailTemplate("confirm")

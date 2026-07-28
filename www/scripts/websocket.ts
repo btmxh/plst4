@@ -15,7 +15,9 @@ export type SocketMsg = {
 
 export class Plst4Socket {
   socket: WebSocket | undefined = undefined;
+  events: EventSource | undefined = undefined;
   retryCount = 0;
+  hasHandshake = false;
   onMessage: (msg: SocketMsg) => void;
   queue: SocketMsg[] = [];
 
@@ -49,12 +51,17 @@ export class Plst4Socket {
     };
 
     this.socket.onmessage = (msg) => {
-      this.onMessage(JSON.parse(msg.data));
+      this.#handleMessage(JSON.parse(msg.data));
     };
 
     this.socket.onclose = (ev) => {
       this.socket = undefined;
       console.error("WebSocket closed: ", ev);
+      if (!this.hasHandshake) {
+        this.#initSSE(playlist);
+        return;
+      }
+
       // Abnormal Closure/Service Restart/Try Again Later
       if ([1006, 1012, 1013].includes(ev.code)) {
         const exp = Math.min(this.retryCount, 6);
@@ -64,6 +71,34 @@ export class Plst4Socket {
         setTimeout(() => this.#init(), delay);
       }
     };
+  }
+
+  #initSSE(playlist: string) {
+    if (this.events !== undefined) return;
+
+    const uri = `/sse/${playlist}`;
+    console.log(`Falling back to SSE endpoint at ${uri}`);
+    this.events = new EventSource(uri);
+
+    this.events.onopen = () => {
+      console.log("SSE connection established");
+    };
+
+    this.events.onerror = (ev) => {
+      console.error("SSE error: ", ev);
+    };
+
+    this.events.onmessage = (msg) => {
+      this.#handleMessage(JSON.parse(msg.data));
+    };
+  }
+
+  #handleMessage(msg: SocketMsg) {
+    if (msg.type === "handshake") {
+      this.hasHandshake = true;
+    }
+
+    this.onMessage(msg);
   }
 
   send(msg: SocketMsg) {
