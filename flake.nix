@@ -2,7 +2,7 @@
   description = "plst4 development shell";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs = { nixpkgs, ... }:
@@ -26,23 +26,14 @@
             air
             delve
             ffmpeg-headless
-            go_1_23
+            go
             gopls
             gotools
-            migrate
-            nodejs_22
+            go-migrate
+            nodejs
             pnpm
-            postgresql_16
+            postgresql
           ];
-
-          shellHook = ''
-            export GOTOOLCHAIN=local
-
-            echo "plst4 dev shell"
-            echo "  pnpm install"
-            echo "  migrate -database \"$DATABASE_URL\" -path db/migrations up"
-            echo "  pnpm dev"
-          '';
         };
       });
     };
